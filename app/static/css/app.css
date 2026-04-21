@@ -40,6 +40,30 @@ h1 .subtitle { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
 #status-bar { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.8rem; }
 .sep { opacity: 0.3; }
 
+/* push settings button to the far right */
+.header-icon-btn {
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.header-icon-btn:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(79,142,247,0.08);
+}
+.header-icon-btn svg { pointer-events: none; }
+
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .dot.connected    { background: var(--green); box-shadow: 0 0 6px var(--green); }
 .dot.disconnected { background: var(--red); }
@@ -357,6 +381,37 @@ input[type="color"] {
 input[type="color"]::-webkit-color-swatch-wrapper { padding: 2px; }
 input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 
+/* Editable text input in modals */
+.text-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-family: ui-monospace, monospace;
+  padding: 0.4rem 0.6rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.text-input:focus { border-color: var(--accent); }
+.text-input::placeholder { color: var(--muted); }
+
+.modal-row--col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+.modal-row--col label { font-size: 0.78rem; }
+
+/* Read-only stat value in modals */
+.stat-value {
+  font-size: 0.78rem;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 /* Modal footer */
 .modal-footer {
   display: flex;
@@ -379,3 +434,52 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
   color: var(--muted);
 }
 .notif-item.alarm { border-color: var(--red); color: var(--red); }
+
+/* ── Record button ── */
+.record-btn { margin-left: 0; }
+
+.record-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  display: block;
+  flex-shrink: 0;
+}
+
+/* Pulsing animation when recording is active */
+@keyframes record-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.35; transform: scale(0.75); }
+}
+
+.record-btn.recording {
+  border-color: var(--red);
+  background: rgba(247, 107, 107, 0.12);
+  color: var(--red);
+}
+
+.record-btn.recording .record-dot {
+  animation: record-pulse 1.2s ease-in-out infinite;
+}
+
+/* Recording elapsed timer label in header */
+#record-timer {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--red);
+  display: none;
+}
+#record-timer.visible { display: inline; }
+
+/* ── Screenshot button ── */
+.screenshot-btn { margin-left: 0; }
+
+@keyframes screenshot-flash {
+  0%   { background: rgba(62,207,142,0.35); border-color: var(--green); color: var(--green); }
+  100% { background: transparent; border-color: var(--border); color: var(--muted); }
+}
+
+.screenshot-btn.flash {
+  animation: screenshot-flash 0.6s ease-out forwards;
+}

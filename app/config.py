@@ -22,8 +22,10 @@ class Settings(BaseSettings):
     motion_mog2_threshold: int = 40  # MOG2 variance threshold (sensitivity)
 
     # Motion visual style (colors as hex strings, converted to BGR in the processor)
+    motion_trail_enabled: bool = True
     motion_trail_color: str = "#32dc64"      # fading dot trail
     motion_trail_max_radius: int = 5         # radius of newest trail dot (px)
+    motion_contour_enabled: bool = True
     motion_contour_color: str = "#32dc64"    # moving object outline
     motion_contour_thickness: int = 2        # outline thickness (px)
     motion_arrow_color: str = "#00c8ff"      # direction arrow
@@ -49,6 +51,11 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = ""
     notify_email: str = ""
+
+    # Recording
+    recording_output_dir: str = "recordings"
+    recording_filename_pattern: str = "{project_name}_{current_timestamp}"
+    recording_project_name: str = "vip"
 
     # Logging
     log_level: str = "INFO"

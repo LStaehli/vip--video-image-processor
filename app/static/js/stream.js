@@ -12,11 +12,11 @@ const videoCanvas = document.getElementById('video-canvas');
 const zoneCanvas  = document.getElementById('zone-canvas');
 const ctx         = videoCanvas.getContext('2d');
 
-const connDot    = document.getElementById('conn-indicator');
-const connLabel  = document.getElementById('conn-label');
-const fpsCounter = document.getElementById('fps-counter');
+const connDot     = document.getElementById('conn-indicator');
+const connLabel   = document.getElementById('conn-label');
+const fpsCounter  = document.getElementById('fps-counter');
 const clientCount = document.getElementById('client-count');
-const streamSrc  = document.getElementById('stream-source');
+const streamSrc   = document.getElementById('stream-source');
 
 // ── Video WebSocket ──────────────────────────────────────────────────────────
 
@@ -105,42 +105,8 @@ async function pollStatus() {
     fpsCounter.textContent  = `${data.actual_fps} fps`;
     clientCount.textContent = `${data.video_clients} client${data.video_clients !== 1 ? 's' : ''}`;
     streamSrc.textContent   = data.source;
-
-    // Sync checkboxes without triggering change events
-    syncCheckbox('toggle-motion',    data.features.motion);
-    syncCheckbox('toggle-zones',     data.features.zones);
-    syncCheckbox('toggle-detection', data.features.detection);
   } catch (_) {}
 }
-
-function syncCheckbox(id, value) {
-  const el = document.getElementById(id);
-  if (el && el.checked !== value) el.checked = value;
-}
-
-// ── Feature toggles ───────────────────────────────────────────────────────────
-
-async function patchConfig(body) {
-  try {
-    await fetch('/api/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-  } catch (_) {}
-}
-
-document.getElementById('toggle-motion').addEventListener('change', (e) => {
-  patchConfig({ enable_motion: e.target.checked });
-});
-
-document.getElementById('toggle-zones').addEventListener('change', (e) => {
-  patchConfig({ enable_zones: e.target.checked });
-});
-
-document.getElementById('toggle-detection').addEventListener('change', (e) => {
-  patchConfig({ enable_detection: e.target.checked });
-});
 
 document.getElementById('btn-reconnect').addEventListener('click', () => {
   if (videoWs) videoWs.close();

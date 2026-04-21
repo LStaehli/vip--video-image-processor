@@ -14,16 +14,23 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/config")
 
-# Pipeline reference injected by main.py
+# References injected by main.py
 _pipeline = None
+_reader = None
 
 
-def init(pipeline) -> None:
-    global _pipeline
+def init(pipeline, reader=None) -> None:
+    global _pipeline, _reader
     _pipeline = pipeline
+    _reader = reader
 
 
 class ConfigUpdate(BaseModel):
+    stream_url: Optional[str] = None   # "0" for webcam or an RTSP/MJPEG URL
+    # Recording
+    recording_output_dir: Optional[str] = None
+    recording_filename_pattern: Optional[str] = None
+    recording_project_name: Optional[str] = None
     target_fps: Optional[int] = Field(None, ge=1, le=60)
     jpeg_quality: Optional[int] = Field(None, ge=1, le=100)
     enable_motion: Optional[bool] = None
@@ -34,8 +41,10 @@ class ConfigUpdate(BaseModel):
     motion_trail_length: Optional[int] = Field(None, ge=1, le=60)
     motion_mog2_threshold: Optional[int] = Field(None, ge=1, le=500)
     # Motion visual style
+    motion_trail_enabled: Optional[bool] = None
     motion_trail_color: Optional[str] = None
     motion_trail_max_radius: Optional[int] = Field(None, ge=1, le=30)
+    motion_contour_enabled: Optional[bool] = None
     motion_contour_color: Optional[str] = None
     motion_contour_thickness: Optional[int] = Field(None, ge=1, le=15)
     motion_arrow_color: Optional[str] = None
@@ -56,6 +65,10 @@ async def get_config():
             processor_states[name] = getattr(p, "enabled", True)
 
     return {
+        "stream_url": settings.stream_url,
+        "recording_output_dir": settings.recording_output_dir,
+        "recording_filename_pattern": settings.recording_filename_pattern,
+        "recording_project_name": settings.recording_project_name,
         "target_fps": settings.target_fps,
         "jpeg_quality": settings.jpeg_quality,
         "enable_motion": settings.enable_motion,
@@ -64,8 +77,10 @@ async def get_config():
         "motion_min_area": settings.motion_min_area,
         "motion_trail_length": settings.motion_trail_length,
         "motion_mog2_threshold": settings.motion_mog2_threshold,
+        "motion_trail_enabled": settings.motion_trail_enabled,
         "motion_trail_color": settings.motion_trail_color,
         "motion_trail_max_radius": settings.motion_trail_max_radius,
+        "motion_contour_enabled": settings.motion_contour_enabled,
         "motion_contour_color": settings.motion_contour_color,
         "motion_contour_thickness": settings.motion_contour_thickness,
         "motion_arrow_color": settings.motion_arrow_color,
@@ -85,6 +100,18 @@ async def update_config(update: ConfigUpdate):
     Feature toggles (enable_*) set the `enabled` flag on the corresponding
     processor so it is skipped in the next frame cycle without restarting.
     """
+    for field_name in ("recording_output_dir", "recording_filename_pattern", "recording_project_name"):
+        val = getattr(update, field_name, None)
+        if val is not None:
+            setattr(settings, field_name, val)
+            logger.info("%s updated to %s", field_name, val)
+
+    if update.stream_url is not None:
+        settings.stream_url = update.stream_url
+        if _reader:
+            _reader.set_source(settings.stream_source)
+        logger.info("stream_url updated to %s", update.stream_url)
+
     if update.target_fps is not None:
         settings.target_fps = update.target_fps
         if _pipeline:
@@ -109,8 +136,8 @@ async def update_config(update: ConfigUpdate):
 
     # Visual style — simply write through to settings; processor reads on every frame
     visual_fields = [
-        "motion_trail_color", "motion_trail_max_radius",
-        "motion_contour_color", "motion_contour_thickness",
+        "motion_trail_enabled", "motion_trail_color", "motion_trail_max_radius",
+        "motion_contour_enabled", "motion_contour_color", "motion_contour_thickness",
         "motion_arrow_color", "motion_arrow_thickness", "motion_arrow_enabled",
         "motion_center_color", "motion_center_radius", "motion_center_enabled",
     ]

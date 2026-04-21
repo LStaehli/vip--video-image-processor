@@ -161,8 +161,10 @@ class MotionProcessor(BaseProcessor):
 
     def _draw(self, frame: np.ndarray) -> None:
         # Read all visual settings once per frame so changes apply immediately
+        trail_enabled    = settings.motion_trail_enabled
         trail_color      = _hex_to_bgr(settings.motion_trail_color)
         trail_max_radius = settings.motion_trail_max_radius
+        contour_enabled  = settings.motion_contour_enabled
         contour_color    = _hex_to_bgr(settings.motion_contour_color)
         contour_thick    = settings.motion_contour_thickness
         arrow_color      = _hex_to_bgr(settings.motion_arrow_color)
@@ -181,15 +183,16 @@ class MotionProcessor(BaseProcessor):
             cx, cy = history[-1]
 
             # ── Contour outline ───────────────────────────────────────────────
-            if track.contour is not None:
+            if contour_enabled and track.contour is not None:
                 cv2.drawContours(frame, [track.contour], -1, contour_color, contour_thick)
 
             # ── Fading trail ──────────────────────────────────────────────────
-            for i, (tx, ty) in enumerate(history):
-                intensity = (i + 1) / n          # oldest=dim, newest=bright
-                color  = tuple(int(c * intensity) for c in trail_color)
-                radius = max(1, int(trail_max_radius * intensity))
-                cv2.circle(frame, (tx, ty), radius, color, -1)
+            if trail_enabled:
+                for i, (tx, ty) in enumerate(history):
+                    intensity = (i + 1) / n          # oldest=dim, newest=bright
+                    color  = tuple(int(c * intensity) for c in trail_color)
+                    radius = max(1, int(trail_max_radius * intensity))
+                    cv2.circle(frame, (tx, ty), radius, color, -1)
 
             # ── Center dot ───────────────────────────────────────────────────
             if center_enabled:

@@ -8,6 +8,14 @@
 </head>
 <body>
   <header>
+    <!-- General settings — top left -->
+    <button id="btn-general-settings" class="header-icon-btn" title="General settings" aria-label="General settings">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+
     <h1>VIP <span class="subtitle">Video Image Processor</span></h1>
     <div id="status-bar">
       <span id="conn-indicator" class="dot disconnected"></span>
@@ -17,6 +25,37 @@
       <span class="sep">|</span>
       <span id="client-count">– clients</span>
     </div>
+    <!-- Record button -->
+    <button id="btn-record" class="header-icon-btn record-btn" title="Start recording" aria-label="Start / stop recording">
+      <span class="record-dot"></span>
+    </button>
+    <span id="record-timer"></span>
+
+    <!-- Screenshot button -->
+    <button id="btn-screenshot" class="header-icon-btn screenshot-btn" title="Take screenshot" aria-label="Take screenshot">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="13" r="4"/>
+      </svg>
+    </button>
+
+    <!-- Stream settings — top right -->
+    <button id="btn-stream-settings" class="header-icon-btn" title="Stream settings" aria-label="Stream settings">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                 a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                 A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                 l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                 A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                 l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                 a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                 l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                 a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
   </header>
 
   <main>
@@ -63,15 +102,6 @@
             <div class="field-hint">Ignore blobs smaller than this</div>
           </div>
 
-          <div class="field">
-            <div class="field-row">
-              <label for="motion-trail">Trail length</label>
-              <span class="field-value" id="motion-trail-val"></span>
-            </div>
-            <input type="range" id="motion-trail" min="1" max="60" step="1" />
-            <div class="field-hint">Number of past positions shown</div>
-          </div>
-
           <button class="btn-secondary" id="btn-visual-settings">Visual settings…</button>
         </div>
       </section>
@@ -113,6 +143,121 @@
     </aside>
   </main>
 
+  <!-- ── General Settings Modal ── -->
+  <div id="general-settings-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>General Settings</h3>
+        <button class="modal-close" id="btn-general-settings-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="modal-group">
+          <div class="modal-group-title">Recording</div>
+
+          <div class="modal-row modal-row--col">
+            <label for="gs-output-dir">Output directory</label>
+            <input type="text" id="gs-output-dir" class="text-input"
+                   placeholder="recordings" spellcheck="false" />
+            <div class="field-hint">Relative to the server working directory, or an absolute path.</div>
+          </div>
+
+          <div class="modal-row modal-row--col">
+            <label for="gs-project-name">Project name</label>
+            <input type="text" id="gs-project-name" class="text-input"
+                   placeholder="vip" spellcheck="false" />
+          </div>
+
+          <div class="modal-row modal-row--col">
+            <label for="gs-filename-pattern">Filename pattern</label>
+            <input type="text" id="gs-filename-pattern" class="text-input"
+                   placeholder="{project_name}_{current_timestamp}" spellcheck="false" />
+            <div class="field-hint">
+              Available variables:
+              <code>{project_name}</code>&nbsp;
+              <code>{current_date}</code>&nbsp;
+              <code>{current_timestamp}</code><br/>
+              Example: <em>{project_name}_{current_timestamp}</em> → <em>vip_2026-04-21_14-31-42.mp4</em>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-general-settings-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-general-settings-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Stream Settings Modal ── -->
+  <div id="stream-settings-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Stream Settings</h3>
+        <button class="modal-close" id="btn-stream-settings-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Source (editable) -->
+        <div class="modal-group">
+          <div class="modal-group-title">Video source</div>
+          <div class="modal-row modal-row--col">
+            <label for="ss-source">URL or device index</label>
+            <input type="text" id="ss-source" class="text-input"
+                   placeholder="0  or  rtsp://192.168.1.x:8554/cam" spellcheck="false" />
+            <div class="field-hint">Use <code>0</code> for the local webcam, or an RTSP / MJPEG URL for a remote camera. Changes reconnect immediately.</div>
+          </div>
+        </div>
+
+        <!-- Status (read-only) -->
+        <div class="modal-group">
+          <div class="modal-group-title">Status</div>
+          <div class="modal-row">
+            <label>Connection</label>
+            <span class="stat-value" id="ss-connected">–</span>
+          </div>
+          <div class="modal-row">
+            <label>Actual FPS</label>
+            <span class="stat-value" id="ss-actual-fps">–</span>
+          </div>
+          <div class="modal-row">
+            <label>Clients</label>
+            <span class="stat-value" id="ss-clients">–</span>
+          </div>
+        </div>
+
+        <!-- Pipeline -->
+        <div class="modal-group">
+          <div class="modal-group-title">Pipeline</div>
+          <div class="modal-row">
+            <label for="ss-fps">Target FPS</label>
+            <div class="range-with-value">
+              <input type="range" id="ss-fps" min="1" max="60" step="1" />
+              <span class="field-value" id="ss-fps-val"></span>
+            </div>
+          </div>
+          <div class="modal-row">
+            <label for="ss-quality">JPEG quality</label>
+            <div class="range-with-value">
+              <input type="range" id="ss-quality" min="10" max="100" step="5" />
+              <span class="field-value" id="ss-quality-val"></span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /.modal-body -->
+
+      <div class="modal-footer">
+        <button id="btn-stream-settings-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-stream-settings-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Visual Settings Modal ── -->
   <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
     <div class="modal">
@@ -127,8 +272,22 @@
         <div class="modal-group">
           <div class="modal-group-title">Trail</div>
           <div class="modal-row">
+            <label for="vs-trail-enabled">Show trail</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="vs-trail-enabled" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="modal-row">
             <label for="vs-trail-color">Color</label>
             <input type="color" id="vs-trail-color" />
+          </div>
+          <div class="modal-row">
+            <label for="vs-trail-length">Length</label>
+            <div class="range-with-value">
+              <input type="range" id="vs-trail-length" min="1" max="60" step="1" />
+              <span class="field-value" id="vs-trail-length-val"></span>
+            </div>
           </div>
           <div class="modal-row">
             <label for="vs-trail-radius">Max radius</label>
@@ -142,6 +301,13 @@
         <!-- Contour -->
         <div class="modal-group">
           <div class="modal-group-title">Object outline</div>
+          <div class="modal-row">
+            <label for="vs-contour-enabled">Show outline</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="vs-contour-enabled" />
+              <span class="slider"></span>
+            </label>
+          </div>
           <div class="modal-row">
             <label for="vs-contour-color">Color</label>
             <input type="color" id="vs-contour-color" />

@@ -179,6 +179,7 @@ cython_debug/
 models/*.pt
 *.db
 .env
+recordings/
 
 # Abstra
 # Abstra is an AI-powered process automation framework.

@@ -37,6 +37,14 @@ class FramePipeline:
         # FPS tracking — rolling window of recent frame timestamps
         self._frame_times: deque[float] = deque(maxlen=_FPS_WINDOW)
 
+        # Last known frame dimensions — used by the recording service
+        self._last_frame_size: tuple[int, int] | None = None  # (width, height)
+        # Last processed (annotated) frame — used for screenshots
+        self._last_frame: np.ndarray | None = None
+
+        # Optional recording service — set by main.py after startup
+        self._recorder = None
+
     def add_processor(self, processor) -> None:
         self._processors.append(processor)
 
@@ -66,6 +74,10 @@ class FramePipeline:
             last_sent = now
             self._frame_times.append(now)
 
+            # Track frame dimensions for the recording service
+            h, w = frame.shape[:2]
+            self._last_frame_size = (w, h)
+
             state = FrameState(timestamp=time.time())
 
             # Run processor chain — each processor is individually guarded
@@ -76,6 +88,13 @@ class FramePipeline:
                     frame = processor.process(frame, state)
                 except Exception:
                     logger.exception("Processor %s raised an error", type(processor).__name__)
+
+            # Keep a reference to the latest annotated frame
+            self._last_frame = frame
+
+            # Record annotated frame if recording is active
+            if self._recorder:
+                self._recorder.write_frame(frame)
 
             # Encode and broadcast
             ok, jpeg_buf = cv2.imencode(

@@ -48,6 +48,19 @@ class StreamReader:
             self._cap.release()
         logger.info("StreamReader stopped")
 
+    def set_source(self, source: int | str) -> None:
+        """Switch to a new video source without restarting the server.
+
+        Releases the current capture immediately; the background thread's
+        reconnection loop will open the new source on its next iteration.
+        """
+        self._source = source
+        self.connected = False
+        if self._cap:
+            self._cap.release()
+            self._cap = None
+        logger.info("StreamReader source changed to: %s", source)
+
     @property
     def queue(self) -> asyncio.Queue:
         return self._queue
