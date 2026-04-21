@@ -43,16 +43,19 @@ async def lifespan(app: FastAPI):
     reader = StreamReader(source=settings.stream_source, loop=loop)
     pipeline = FramePipeline(input_queue=reader.queue, ws_manager=ws_manager)
 
-    # Wire up processors based on feature flags
-    if settings.enable_motion:
-        from app.processors.motion import MotionProcessor
-        pipeline.add_processor(MotionProcessor())
-        logger.info("MotionProcessor enabled")
+    # Always add all processors so runtime toggles work without restart.
+    # Each processor checks its own .enabled flag before doing any work.
+    from app.processors.motion import MotionProcessor
+    motion_proc = MotionProcessor()
+    motion_proc.enabled = settings.enable_motion
+    pipeline.add_processor(motion_proc)
+    logger.info("MotionProcessor added (enabled=%s)", motion_proc.enabled)
 
-    if settings.enable_zones:
-        from app.processors.zones import ZoneProcessor
-        pipeline.add_processor(ZoneProcessor(ws_manager=ws_manager))
-        logger.info("ZoneProcessor enabled")
+    from app.processors.zones import ZoneProcessor
+    zone_proc = ZoneProcessor(ws_manager=ws_manager)
+    zone_proc.enabled = settings.enable_zones
+    pipeline.add_processor(zone_proc)
+    logger.info("ZoneProcessor added (enabled=%s)", zone_proc.enabled)
 
     if settings.enable_detection:
         from app.processors.detection import DetectionProcessor
@@ -101,9 +104,11 @@ app = FastAPI(title="VIP - Video Image Processor", lifespan=lifespan)
 from app.api.stream import router as stream_router
 from app.api.config import router as config_router
 from app.api.recording import router as recording_router
+from app.api.zones import router as zones_router
 
 app.include_router(stream_router)
 app.include_router(config_router)
 app.include_router(recording_router)
+app.include_router(zones_router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

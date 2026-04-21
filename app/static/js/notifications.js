@@ -1,7 +1,37 @@
 /**
- * notifications.js — Phase 3 placeholder
- * Connects to /ws/events, displays zone alarm notifications, requests browser
- * Notification API permission.
+ * notifications.js — zone alert notifications
+ *
+ * Listens for vip:event dispatched by stream.js from the /ws/events WebSocket.
+ * On a zone_alert event, adds a timestamped item to #notif-list in the sidebar.
+ * Each notification auto-dismisses after 15 s; the list is capped at 10 items.
  */
 
-// Placeholder — implemented in Phase 3
+const notifList  = document.getElementById('notif-list');
+const MAX_NOTIFS = 10;
+const NOTIF_TTL  = 15_000; // ms
+
+window.addEventListener('vip:event', (e) => {
+  const payload = e.detail;
+  if (payload.type === 'zone_alert') {
+    addNotification(`⚠ ${payload.zone}`, 'alarm');
+  }
+});
+
+function addNotification(message, cls = '') {
+  const item = document.createElement('div');
+  item.className = `notif-item${cls ? ' ' + cls : ''}`;
+
+  const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  item.textContent = `${time}  ${message}`;
+
+  notifList.prepend(item);
+
+  // Auto-remove after TTL
+  const timer = setTimeout(() => item.remove(), NOTIF_TTL);
+  item.addEventListener('click', () => { clearTimeout(timer); item.remove(); });
+
+  // Cap list length
+  while (notifList.children.length > MAX_NOTIFS) {
+    notifList.lastElementChild.remove();
+  }
+}

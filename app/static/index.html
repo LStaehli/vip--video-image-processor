@@ -121,17 +121,20 @@
         </div>
       </section>
 
-      <!-- ── Detection Zones (Phase 3) ── -->
+      <!-- ── Detection Zones ── -->
       <section class="feature-section" id="section-zones">
         <div class="feature-header">
           <h2>Detection Zones</h2>
           <label class="toggle-switch">
-            <input type="checkbox" id="toggle-zones" disabled />
+            <input type="checkbox" id="toggle-zones" />
             <span class="slider"></span>
           </label>
         </div>
-        <div class="feature-body collapsed">
-          <p class="coming-soon">Coming in Phase 3</p>
+        <div class="feature-body collapsed" id="zones-body">
+          <p class="field-hint">Click "Draw zone", then click on the video to place vertices. Click the first point or double-click to close the shape.</p>
+          <p class="field-hint zones-warning">Requires Motion Tracking to detect objects.</p>
+          <button class="btn-secondary" id="btn-draw-zone">Draw zone</button>
+          <div id="zone-list"></div>
         </div>
       </section>
 
