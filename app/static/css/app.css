@@ -27,11 +27,23 @@ body {
 header {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
+  justify-content: space-between;
   padding: 0.6rem 1.2rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.04em; }
@@ -40,9 +52,8 @@ h1 .subtitle { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
 #status-bar { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.8rem; }
 .sep { opacity: 0.3; }
 
-/* push settings button to the far right */
 .header-icon-btn {
-  margin-left: auto;
+  margin-left: 0;
   background: transparent;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -436,7 +447,6 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 .notif-item.alarm { border-color: var(--red); color: var(--red); }
 
 /* ── Record button ── */
-.record-btn { margin-left: 0; }
 
 .record-dot {
   width: 10px;
@@ -473,8 +483,6 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 #record-timer.visible { display: inline; }
 
 /* ── Screenshot button ── */
-.screenshot-btn { margin-left: 0; }
-
 @keyframes screenshot-flash {
   0%   { background: rgba(62,207,142,0.35); border-color: var(--green); color: var(--green); }
   100% { background: transparent; border-color: var(--border); color: var(--muted); }
