@@ -17,9 +17,9 @@ class Settings(BaseSettings):
     enable_detection: bool = False
 
     # Motion processor tuning
-    motion_min_area: int = 800       # px² — minimum contour area to track
-    motion_trail_length: int = 20    # number of historical positions in trail
-    motion_mog2_threshold: int = 40  # MOG2 variance threshold (sensitivity)
+    motion_min_area: int = 3500       # px² — minimum contour area to track
+    motion_trail_length: int = 30     # number of historical positions in trail
+    motion_mog2_threshold: int = 120  # MOG2 variance threshold (sensitivity)
 
     # Motion visual style (colors as hex strings, converted to BGR in the processor)
     motion_trail_enabled: bool = True
