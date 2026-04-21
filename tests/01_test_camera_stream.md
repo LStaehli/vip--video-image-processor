@@ -19,7 +19,7 @@
   - Live FPS counter updating every 2 seconds
   - Feature checkboxes (all off for now — they'll do something in Phase 2+)                                                                                                                                                                         
                                                                                                                                                                                                                                                     
-  4. Optional — test MJPEG fallback:                                                                                                                                                                                                                
+  4. Optional — test MJPEG fallback:                                                                                                                                                                                                               
   http://localhost:8000/stream.mjpeg                                                                                                                                                                                                                
                                                                                                                                                                                                                                                     
   5. Optional — test runtime config (no restart needed):                                                                                                                                                                                            
