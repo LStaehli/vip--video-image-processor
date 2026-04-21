@@ -177,7 +177,10 @@ cython_debug/
 .idea/
 
 # VIP — project-specific ignores
-models/*.pt
+# Downloaded YOLO weights
+models/
+# Stray .pt files at repo root
+/*.pt
 *.db
 .env
 recordings/

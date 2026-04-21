@@ -94,11 +94,17 @@ class StreamReader:
                     self.connected = False
                     break
 
-                # Drop the frame if the consumer (pipeline) is behind
-                try:
-                    self._loop.call_soon_threadsafe(self._queue.put_nowait, frame)
-                except asyncio.QueueFull:
-                    pass
+                # Drop the frame if the consumer (pipeline) is behind.
+                # put_nowait is scheduled as an event-loop callback via
+                # call_soon_threadsafe, so QueueFull must be caught inside
+                # the callback rather than around call_soon_threadsafe itself.
+                def _try_put(f=frame):
+                    try:
+                        self._queue.put_nowait(f)
+                    except asyncio.QueueFull:
+                        pass
+
+                self._loop.call_soon_threadsafe(_try_put)
 
             self._cap.release()
             self._cap = None

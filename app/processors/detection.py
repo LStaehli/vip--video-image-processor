@@ -14,6 +14,8 @@ model_loading WebSocket event is sent to connected clients.
 import asyncio
 import concurrent.futures
 import logging
+import os
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -100,10 +102,27 @@ class DetectionProcessor(BaseProcessor):
         future = self._executor.submit(self._load_in_thread, target)
         future.add_done_callback(lambda f: self._on_loaded(f, target, loop))
 
+    @staticmethod
+    def _resolve_model_path(name: str) -> str:
+        """Return the full model path.
+
+        Bare filenames (e.g. 'yolov8n.pt') are resolved to 'models/<name>'
+        so weights are always stored in the dedicated models/ directory.
+        Paths that already contain a directory component are used as-is.
+        """
+        p = Path(name)
+        if p.parent == Path("."):
+            # No directory component — put it under models/
+            resolved = Path("models") / p
+        else:
+            resolved = p
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        return str(resolved)
+
     def _load_in_thread(self, target: str):
         """Blocking model load — runs in the thread pool."""
         from ultralytics import YOLO
-        return YOLO(target)
+        return YOLO(self._resolve_model_path(target))
 
     def _on_loaded(
         self,
