@@ -20,12 +20,13 @@ class Settings(BaseSettings):
     motion_min_area: int = 3500       # px² — minimum contour area to track
     motion_trail_length: int = 30     # number of historical positions in trail
     motion_mog2_threshold: int = 120  # MOG2 variance threshold (sensitivity)
+    motion_dilate_kernel: int = 9     # dilation kernel size (px, odd); larger merges nearby blobs
 
     # Motion visual style (colors as hex strings, converted to BGR in the processor)
     motion_trail_enabled: bool = True
     motion_trail_color: str = "#32dc64"      # fading dot trail
     motion_trail_max_radius: int = 5         # radius of newest trail dot (px)
-    motion_contour_enabled: bool = True
+    motion_contour_enabled: bool = False
     motion_contour_color: str = "#32dc64"    # moving object outline
     motion_contour_thickness: int = 2        # outline thickness (px)
     motion_arrow_color: str = "#00c8ff"      # direction arrow

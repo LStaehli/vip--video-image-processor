@@ -69,7 +69,10 @@ class MotionProcessor(BaseProcessor):
         )
         # Morphology kernels
         self._kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        self._kernel_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+        self._dilate_size  = settings.motion_dilate_kernel
+        self._kernel_dilate = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE, (self._dilate_size, self._dilate_size)
+        )
 
         self._tracks: dict[int, _Track] = {}
         self._next_id = 0
@@ -95,6 +98,16 @@ class MotionProcessor(BaseProcessor):
     # ── Internal steps ────────────────────────────────────────────────────────
 
     def _build_mask(self, frame: np.ndarray) -> np.ndarray:
+        # Rebuild dilation kernel if the setting changed at runtime
+        current_size = settings.motion_dilate_kernel
+        if current_size != self._dilate_size:
+            # Ensure kernel size is odd (OpenCV requirement)
+            size = current_size if current_size % 2 == 1 else current_size + 1
+            self._kernel_dilate = cv2.getStructuringElement(
+                cv2.MORPH_ELLIPSE, (size, size)
+            )
+            self._dilate_size = current_size
+
         mask = self._subtractor.apply(frame)
         # Remove noise and fill holes
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,  self._kernel_open)

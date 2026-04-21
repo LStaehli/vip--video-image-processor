@@ -52,6 +52,8 @@ const sensitivitySlider = document.getElementById('motion-sensitivity');
 const sensitivityVal    = document.getElementById('motion-sensitivity-val');
 const minAreaSlider     = document.getElementById('motion-min-area');
 const minAreaVal        = document.getElementById('motion-min-area-val');
+const dilateSlider      = document.getElementById('motion-dilate');
+const dilateVal         = document.getElementById('motion-dilate-val');
 const motionBody        = document.getElementById('motion-body');
 
 // Toggle switch
@@ -77,6 +79,13 @@ minAreaSlider.addEventListener('input', debounce(() => {
   patchConfig({ motion_min_area: parseInt(minAreaSlider.value) });
 }, DEBOUNCE_MS));
 
+dilateSlider.addEventListener('input', () => {
+  dilateVal.textContent = dilateSlider.value;
+});
+dilateSlider.addEventListener('input', debounce(() => {
+  patchConfig({ motion_dilate_kernel: parseInt(dilateSlider.value) });
+}, DEBOUNCE_MS));
+
 // ── Populate UI from server config on load ────────────────────────────────────
 
 async function loadConfig() {
@@ -96,6 +105,9 @@ async function loadConfig() {
 
     minAreaSlider.value = data.motion_min_area;
     minAreaVal.textContent  = data.motion_min_area;
+
+    dilateSlider.value = data.motion_dilate_kernel;
+    dilateVal.textContent  = data.motion_dilate_kernel;
 
   } catch (e) {
     console.warn('failed to load config', e);

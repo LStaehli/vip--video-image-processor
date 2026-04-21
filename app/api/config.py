@@ -40,6 +40,7 @@ class ConfigUpdate(BaseModel):
     motion_min_area: Optional[int] = Field(None, ge=0)
     motion_trail_length: Optional[int] = Field(None, ge=1, le=60)
     motion_mog2_threshold: Optional[int] = Field(None, ge=1, le=500)
+    motion_dilate_kernel: Optional[int] = Field(None, ge=1, le=51)
     # Motion visual style
     motion_trail_enabled: Optional[bool] = None
     motion_trail_color: Optional[str] = None
@@ -77,6 +78,7 @@ async def get_config():
         "motion_min_area": settings.motion_min_area,
         "motion_trail_length": settings.motion_trail_length,
         "motion_mog2_threshold": settings.motion_mog2_threshold,
+        "motion_dilate_kernel": settings.motion_dilate_kernel,
         "motion_trail_enabled": settings.motion_trail_enabled,
         "motion_trail_color": settings.motion_trail_color,
         "motion_trail_max_radius": settings.motion_trail_max_radius,
@@ -133,6 +135,10 @@ async def update_config(update: ConfigUpdate):
     if update.motion_mog2_threshold is not None:
         settings.motion_mog2_threshold = update.motion_mog2_threshold
         logger.info("motion_mog2_threshold updated to %d", update.motion_mog2_threshold)
+
+    if update.motion_dilate_kernel is not None:
+        settings.motion_dilate_kernel = update.motion_dilate_kernel
+        logger.info("motion_dilate_kernel updated to %d", update.motion_dilate_kernel)
 
     # Visual style — simply write through to settings; processor reads on every frame
     visual_fields = [
