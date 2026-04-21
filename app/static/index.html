@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VIP — Video Image Processor</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <header>
+    <h1>VIP <span class="subtitle">Video Image Processor</span></h1>
+    <div id="status-bar">
+      <span id="conn-indicator" class="dot disconnected"></span>
+      <span id="conn-label">Connecting…</span>
+      <span class="sep">|</span>
+      <span id="fps-counter">– fps</span>
+      <span class="sep">|</span>
+      <span id="client-count">– clients</span>
+    </div>
+  </header>
+
+  <main>
+    <div id="canvas-container">
+      <!-- Video feed -->
+      <canvas id="video-canvas"></canvas>
+      <!-- Zone editor overlay (same dimensions, positioned on top) -->
+      <canvas id="zone-canvas"></canvas>
+    </div>
+
+    <aside id="controls">
+      <section>
+        <h2>Features</h2>
+        <label><input type="checkbox" id="toggle-motion" /> Motion tracking</label>
+        <label><input type="checkbox" id="toggle-zones" /> Detection zones</label>
+        <label><input type="checkbox" id="toggle-detection" /> Object detection</label>
+      </section>
+
+      <section>
+        <h2>Stream</h2>
+        <p id="stream-source">–</p>
+        <button id="btn-reconnect">Reconnect</button>
+      </section>
+
+      <section id="notifications-panel">
+        <h2>Notifications</h2>
+        <div id="notif-list"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script src="/js/stream.js"></script>
+  <script src="/js/zone_editor.js"></script>
+  <script src="/js/notifications.js"></script>
+</body>
+</html>
