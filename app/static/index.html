@@ -21,34 +21,197 @@
 
   <main>
     <div id="canvas-container">
-      <!-- Video feed -->
       <canvas id="video-canvas"></canvas>
-      <!-- Zone editor overlay (same dimensions, positioned on top) -->
       <canvas id="zone-canvas"></canvas>
     </div>
 
     <aside id="controls">
-      <section>
-        <h2>Features</h2>
-        <label><input type="checkbox" id="toggle-motion" /> Motion tracking</label>
-        <label><input type="checkbox" id="toggle-zones" /> Detection zones</label>
-        <label><input type="checkbox" id="toggle-detection" /> Object detection</label>
-      </section>
 
+      <!-- ── Stream ── -->
       <section>
         <h2>Stream</h2>
         <p id="stream-source">–</p>
         <button id="btn-reconnect">Reconnect</button>
       </section>
 
-      <section id="notifications-panel">
+      <!-- ── Motion Tracking ── -->
+      <section class="feature-section" id="section-motion">
+        <div class="feature-header">
+          <h2>Motion Tracking</h2>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-motion" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="feature-body" id="motion-body">
+          <div class="field">
+            <div class="field-row">
+              <label for="motion-sensitivity">Sensitivity</label>
+              <span class="field-value" id="motion-sensitivity-val"></span>
+            </div>
+            <input type="range" id="motion-sensitivity" min="5" max="500" step="5" />
+            <div class="field-hint">Lower = more sensitive to small movements</div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="motion-min-area">Min area (px²)</label>
+              <span class="field-value" id="motion-min-area-val"></span>
+            </div>
+            <input type="range" id="motion-min-area" min="100" max="20000" step="100" />
+            <div class="field-hint">Ignore blobs smaller than this</div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="motion-trail">Trail length</label>
+              <span class="field-value" id="motion-trail-val"></span>
+            </div>
+            <input type="range" id="motion-trail" min="1" max="60" step="1" />
+            <div class="field-hint">Number of past positions shown</div>
+          </div>
+
+          <button class="btn-secondary" id="btn-visual-settings">Visual settings…</button>
+        </div>
+      </section>
+
+      <!-- ── Detection Zones (Phase 3) ── -->
+      <section class="feature-section" id="section-zones">
+        <div class="feature-header">
+          <h2>Detection Zones</h2>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-zones" disabled />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="feature-body collapsed">
+          <p class="coming-soon">Coming in Phase 3</p>
+        </div>
+      </section>
+
+      <!-- ── Object Detection (Phase 4) ── -->
+      <section class="feature-section" id="section-detection">
+        <div class="feature-header">
+          <h2>Object Detection</h2>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-detection" disabled />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="feature-body collapsed">
+          <p class="coming-soon">Coming in Phase 4</p>
+        </div>
+      </section>
+
+      <!-- ── Notifications ── -->
+      <section>
         <h2>Notifications</h2>
         <div id="notif-list"></div>
       </section>
+
     </aside>
   </main>
 
+  <!-- ── Visual Settings Modal ── -->
+  <div id="modal-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Motion — Visual Settings</h3>
+        <button class="modal-close" id="btn-modal-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Trail -->
+        <div class="modal-group">
+          <div class="modal-group-title">Trail</div>
+          <div class="modal-row">
+            <label for="vs-trail-color">Color</label>
+            <input type="color" id="vs-trail-color" />
+          </div>
+          <div class="modal-row">
+            <label for="vs-trail-radius">Max radius</label>
+            <div class="range-with-value">
+              <input type="range" id="vs-trail-radius" min="1" max="30" step="1" />
+              <span class="field-value" id="vs-trail-radius-val"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Contour -->
+        <div class="modal-group">
+          <div class="modal-group-title">Object outline</div>
+          <div class="modal-row">
+            <label for="vs-contour-color">Color</label>
+            <input type="color" id="vs-contour-color" />
+          </div>
+          <div class="modal-row">
+            <label for="vs-contour-thickness">Thickness</label>
+            <div class="range-with-value">
+              <input type="range" id="vs-contour-thickness" min="1" max="15" step="1" />
+              <span class="field-value" id="vs-contour-thickness-val"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Arrow -->
+        <div class="modal-group">
+          <div class="modal-group-title">Direction arrow</div>
+          <div class="modal-row">
+            <label for="vs-arrow-enabled">Show arrow</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="vs-arrow-enabled" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="modal-row">
+            <label for="vs-arrow-color">Color</label>
+            <input type="color" id="vs-arrow-color" />
+          </div>
+          <div class="modal-row">
+            <label for="vs-arrow-thickness">Thickness</label>
+            <div class="range-with-value">
+              <input type="range" id="vs-arrow-thickness" min="1" max="15" step="1" />
+              <span class="field-value" id="vs-arrow-thickness-val"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Center dot -->
+        <div class="modal-group">
+          <div class="modal-group-title">Center dot</div>
+          <div class="modal-row">
+            <label for="vs-center-enabled">Show dot</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="vs-center-enabled" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div class="modal-row">
+            <label for="vs-center-color">Color</label>
+            <input type="color" id="vs-center-color" />
+          </div>
+          <div class="modal-row">
+            <label for="vs-center-radius">Radius</label>
+            <div class="range-with-value">
+              <input type="range" id="vs-center-radius" min="1" max="30" step="1" />
+              <span class="field-value" id="vs-center-radius-val"></span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /.modal-body -->
+
+      <div class="modal-footer">
+        <button id="btn-modal-reset" class="btn-secondary">Reset defaults</button>
+        <button id="btn-modal-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/js/stream.js"></script>
+  <script src="/js/controls.js"></script>
   <script src="/js/zone_editor.js"></script>
   <script src="/js/notifications.js"></script>
 </body>

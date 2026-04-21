@@ -29,6 +29,21 @@ class ConfigUpdate(BaseModel):
     enable_motion: Optional[bool] = None
     enable_zones: Optional[bool] = None
     enable_detection: Optional[bool] = None
+    # Motion tuning
+    motion_min_area: Optional[int] = Field(None, ge=0)
+    motion_trail_length: Optional[int] = Field(None, ge=1, le=60)
+    motion_mog2_threshold: Optional[int] = Field(None, ge=1, le=500)
+    # Motion visual style
+    motion_trail_color: Optional[str] = None
+    motion_trail_max_radius: Optional[int] = Field(None, ge=1, le=30)
+    motion_contour_color: Optional[str] = None
+    motion_contour_thickness: Optional[int] = Field(None, ge=1, le=15)
+    motion_arrow_color: Optional[str] = None
+    motion_arrow_thickness: Optional[int] = Field(None, ge=1, le=15)
+    motion_arrow_enabled: Optional[bool] = None
+    motion_center_color: Optional[str] = None
+    motion_center_radius: Optional[int] = Field(None, ge=1, le=30)
+    motion_center_enabled: Optional[bool] = None
 
 
 @router.get("")
@@ -46,6 +61,19 @@ async def get_config():
         "enable_motion": settings.enable_motion,
         "enable_zones": settings.enable_zones,
         "enable_detection": settings.enable_detection,
+        "motion_min_area": settings.motion_min_area,
+        "motion_trail_length": settings.motion_trail_length,
+        "motion_mog2_threshold": settings.motion_mog2_threshold,
+        "motion_trail_color": settings.motion_trail_color,
+        "motion_trail_max_radius": settings.motion_trail_max_radius,
+        "motion_contour_color": settings.motion_contour_color,
+        "motion_contour_thickness": settings.motion_contour_thickness,
+        "motion_arrow_color": settings.motion_arrow_color,
+        "motion_arrow_thickness": settings.motion_arrow_thickness,
+        "motion_arrow_enabled": settings.motion_arrow_enabled,
+        "motion_center_color": settings.motion_center_color,
+        "motion_center_radius": settings.motion_center_radius,
+        "motion_center_enabled": settings.motion_center_enabled,
         "processors": processor_states,
     }
 
@@ -66,6 +94,31 @@ async def update_config(update: ConfigUpdate):
     if update.jpeg_quality is not None:
         settings.jpeg_quality = update.jpeg_quality
         logger.info("jpeg_quality updated to %d", update.jpeg_quality)
+
+    if update.motion_min_area is not None:
+        settings.motion_min_area = update.motion_min_area
+        logger.info("motion_min_area updated to %d", update.motion_min_area)
+
+    if update.motion_trail_length is not None:
+        settings.motion_trail_length = update.motion_trail_length
+        logger.info("motion_trail_length updated to %d", update.motion_trail_length)
+
+    if update.motion_mog2_threshold is not None:
+        settings.motion_mog2_threshold = update.motion_mog2_threshold
+        logger.info("motion_mog2_threshold updated to %d", update.motion_mog2_threshold)
+
+    # Visual style — simply write through to settings; processor reads on every frame
+    visual_fields = [
+        "motion_trail_color", "motion_trail_max_radius",
+        "motion_contour_color", "motion_contour_thickness",
+        "motion_arrow_color", "motion_arrow_thickness", "motion_arrow_enabled",
+        "motion_center_color", "motion_center_radius", "motion_center_enabled",
+    ]
+    for field_name in visual_fields:
+        val = getattr(update, field_name, None)
+        if val is not None:
+            setattr(settings, field_name, val)
+            logger.info("%s updated to %s", field_name, val)
 
     if _pipeline:
         toggle_map = {

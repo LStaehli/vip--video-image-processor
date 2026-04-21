@@ -13,8 +13,25 @@ class Settings(BaseSettings):
 
     # Feature toggles
     enable_motion: bool = True
-    enable_zones: bool = True
+    enable_zones: bool = False
     enable_detection: bool = False
+
+    # Motion processor tuning
+    motion_min_area: int = 800       # px² — minimum contour area to track
+    motion_trail_length: int = 20    # number of historical positions in trail
+    motion_mog2_threshold: int = 40  # MOG2 variance threshold (sensitivity)
+
+    # Motion visual style (colors as hex strings, converted to BGR in the processor)
+    motion_trail_color: str = "#32dc64"      # fading dot trail
+    motion_trail_max_radius: int = 5         # radius of newest trail dot (px)
+    motion_contour_color: str = "#32dc64"    # moving object outline
+    motion_contour_thickness: int = 2        # outline thickness (px)
+    motion_arrow_color: str = "#00c8ff"      # direction arrow
+    motion_arrow_thickness: int = 2          # arrow thickness (px)
+    motion_arrow_enabled: bool = True
+    motion_center_color: str = "#ffffff"     # centroid dot
+    motion_center_radius: int = 5            # centroid dot radius (px)
+    motion_center_enabled: bool = True
 
     # Database
     db_path: str = "vip.db"
