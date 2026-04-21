@@ -36,7 +36,12 @@ class ConfigUpdate(BaseModel):
     enable_motion: Optional[bool] = None
     enable_zones: Optional[bool] = None
     enable_detection: Optional[bool] = None
-    zone_stop_mode: Optional[str] = None   # "zone" or "stream"
+    zone_stop_mode: Optional[str] = None      # "zone" or "stream"
+    # YOLOv8
+    yolo_model: Optional[str] = None          # e.g. "yolov8n.pt"
+    yolo_confidence: Optional[float] = Field(None, ge=0.05, le=0.95)
+    yolo_skip_frames: Optional[int] = Field(None, ge=1, le=10)
+    detect_classes: Optional[str] = None      # comma-separated, empty = all
     # Motion tuning
     motion_min_area: Optional[int] = Field(None, ge=0)
     motion_trail_length: Optional[int] = Field(None, ge=1, le=60)
@@ -77,6 +82,10 @@ async def get_config():
         "enable_zones": settings.enable_zones,
         "enable_detection": settings.enable_detection,
         "zone_stop_mode": settings.zone_stop_mode,
+        "yolo_model": settings.yolo_model,
+        "yolo_confidence": settings.yolo_confidence,
+        "yolo_skip_frames": settings.yolo_skip_frames,
+        "detect_classes": settings.detect_classes,
         "motion_min_area": settings.motion_min_area,
         "motion_trail_length": settings.motion_trail_length,
         "motion_mog2_threshold": settings.motion_mog2_threshold,
@@ -146,6 +155,12 @@ async def update_config(update: ConfigUpdate):
         if update.zone_stop_mode in ("zone", "stream"):
             settings.zone_stop_mode = update.zone_stop_mode
             logger.info("zone_stop_mode updated to %s", update.zone_stop_mode)
+
+    for field_name in ("yolo_model", "yolo_confidence", "yolo_skip_frames", "detect_classes"):
+        val = getattr(update, field_name, None)
+        if val is not None:
+            setattr(settings, field_name, val)
+            logger.info("%s updated to %s", field_name, val)
 
     # Visual style — simply write through to settings; processor reads on every frame
     visual_fields = [

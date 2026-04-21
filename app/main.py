@@ -57,10 +57,12 @@ async def lifespan(app: FastAPI):
     pipeline.add_processor(zone_proc)
     logger.info("ZoneProcessor added (enabled=%s)", zone_proc.enabled)
 
-    if settings.enable_detection:
-        from app.processors.detection import DetectionProcessor
-        pipeline.add_processor(DetectionProcessor())
-        logger.info("DetectionProcessor enabled")
+    from app.processors.detection import DetectionProcessor
+    det_proc = DetectionProcessor()
+    det_proc.enabled = settings.enable_detection
+    det_proc._ws_manager = ws_manager
+    pipeline.add_processor(det_proc)
+    logger.info("DetectionProcessor added (enabled=%s)", det_proc.enabled)
 
     # Inject dependencies into route handlers
     from app.api import stream as stream_api

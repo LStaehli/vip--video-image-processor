@@ -408,6 +408,21 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 .text-input:focus { border-color: var(--accent); }
 .text-input::placeholder { color: var(--muted); }
 
+.select-input {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.select-input:focus { border-color: var(--accent); }
+.select-input option { background: var(--bg); }
+
 .modal-row--col {
   flex-direction: column;
   align-items: stretch;
@@ -544,6 +559,32 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
   display: none;
 }
 #record-timer.visible { display: inline; }
+
+/* ── Model loading indicator ── */
+.det-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--accent);
+  padding: 0.3rem 0;
+}
+
+.det-loading.hidden { display: none; }
+
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+.det-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(79,142,247,0.25);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spinner-rotate 0.8s linear infinite;
+  flex-shrink: 0;
+}
 
 /* ── Screenshot button ── */
 @keyframes screenshot-flash {

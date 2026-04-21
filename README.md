@@ -17,14 +17,15 @@ A Python web application that ingests a live video stream (webcam or Raspberry P
 | ✅ Done | Detection zones — draw polygon zones in the browser, automatically start/stop recording when movement is detected inside |
 | ✅ Done | Video recording — start/stop via header button or zone trigger; configurable output directory, project name, and filename pattern |
 | ✅ Done | Screenshot capture — save a single annotated frame to disk at any time |
-| 🔜 Phase 4 | Object/person detection — YOLOv8 bounding boxes with labels |
+| ✅ Done | Object detection — YOLOv8 bounding boxes with class labels and confidence scores, configurable model and class filter |
+| 🔜 Phase 5 | Polish: Docker packaging, reconnection hardening, unit tests |
 
 ---
 
 ## Tech stack
 
 - **Backend:** Python 3.11+, [FastAPI](https://fastapi.tiangolo.com/), [OpenCV](https://opencv.org/), [uvicorn](https://www.uvicorn.org/)
-- **Computer vision:** OpenCV (motion tracking + zone detection), [YOLOv8 / ultralytics](https://docs.ultralytics.com/) (Phase 4)
+- **Computer vision:** OpenCV (motion tracking + zone detection), [YOLOv8 / ultralytics](https://docs.ultralytics.com/) (object detection)
 - **Real-time transport:** WebSocket (binary JPEG frames + JSON events) + MJPEG fallback
 - **Frontend:** Vanilla HTML / JS / CSS — no framework
 - **Package manager:** [uv](https://docs.astral.sh/uv/)
@@ -99,7 +100,11 @@ Edit `.env` (or create one) with your settings:
 | `JPEG_QUALITY` | `70` | JPEG quality sent to browser (1–100) |
 | `ENABLE_MOTION` | `false` | Motion tracking overlay |
 | `ENABLE_ZONES` | `false` | Detection zone recording trigger |
-| `ENABLE_DETECTION` | `false` | YOLOv8 object detection (Phase 4) |
+| `ENABLE_DETECTION` | `false` | YOLOv8 object detection |
+| `YOLO_MODEL` | `yolov8n.pt` | Model weights file (downloaded on first use) |
+| `YOLO_CONFIDENCE` | `0.4` | Minimum detection confidence (0.05–0.95) |
+| `YOLO_SKIP_FRAMES` | `3` | Run inference every N frames |
+| `DETECT_CLASSES` | `` | Comma-separated class filter, empty = all COCO classes |
 | `RECORDING_OUTPUT_DIR` | `recordings` | Directory where recordings and screenshots are saved |
 | `RECORDING_PROJECT_NAME` | `vip` | Project name used in filename patterns |
 | `RECORDING_FILENAME_PATTERN` | `{project_name}_{current_timestamp}` | Filename template (see Recording section) |
@@ -210,6 +215,101 @@ Screenshots follow the same pattern with `_screenshot.jpg` appended.
 
 ---
 
+## Object Detection
+
+Enable the **Object Detection** toggle in the sidebar to activate YOLOv8 inference on each frame. Detected objects are drawn as bounding boxes with a class label and confidence score. Each class is assigned a consistent color across frames.
+
+> The model weights are downloaded automatically on first use and cached in the `models/` directory. The first inference after enabling may take a few seconds while the model loads.
+
+### Sidebar controls
+
+| Control | Description |
+|---|---|
+| Toggle switch | Enable / disable detection without restarting |
+| Model | YOLOv8 variant to use — `yolov8n` is fastest, `yolov8x` is most accurate |
+| Confidence | Minimum confidence threshold for a detection to be shown (5–95 %) |
+| Skip frames | Run inference only every N frames — reduces CPU/GPU load at the cost of responsiveness |
+| Class filter | Comma-separated list of class names to show (e.g. `person, car`). Leave empty to show all classes. |
+
+### Customising what gets detected
+
+#### Option 1 — Filter the built-in COCO classes
+
+By default YOLOv8 is trained on the [COCO dataset](https://cocodataset.org/) which includes 80 everyday object categories. Use the **Class filter** field in the sidebar (or the `detect_classes` API field) to restrict which classes are displayed.
+
+Full list of COCO class names:
+
+```
+person, bicycle, car, motorcycle, airplane, bus, train, truck, boat,
+traffic light, fire hydrant, stop sign, parking meter, bench, bird,
+cat, dog, horse, sheep, cow, elephant, bear, zebra, giraffe, backpack,
+umbrella, handbag, tie, suitcase, frisbee, skis, snowboard, sports ball,
+kite, baseball bat, baseball glove, skateboard, surfboard, tennis racket,
+bottle, wine glass, cup, fork, knife, spoon, bowl, banana, apple,
+sandwich, orange, broccoli, carrot, hot dog, pizza, donut, cake, chair,
+couch, potted plant, bed, dining table, toilet, tv, laptop, mouse,
+remote, keyboard, cell phone, microwave, oven, toaster, sink,
+refrigerator, book, clock, vase, scissors, teddy bear, hair drier, toothbrush
+```
+
+Example — detect only people and vehicles:
+```
+person, car, truck, motorcycle, bicycle, bus
+```
+
+#### Option 2 — Swap the pre-trained model
+
+Different YOLOv8 variants trade speed for accuracy. Change the **Model** dropdown in the sidebar or set `yolo_model` via the API:
+
+| Model | Size | Speed | Use case |
+|---|---|---|---|
+| `yolov8n.pt` | 6 MB | Fastest | Raspberry Pi / low-power devices |
+| `yolov8s.pt` | 22 MB | Fast | General use |
+| `yolov8m.pt` | 50 MB | Balanced | Better accuracy on small objects |
+| `yolov8l.pt` | 87 MB | Slower | High accuracy |
+| `yolov8x.pt` | 136 MB | Slowest | Maximum accuracy |
+
+Ultralytics also publishes task-specific variants if you need segmentation masks (`yolov8n-seg.pt`), pose keypoints (`yolov8n-pose.pt`), or oriented bounding boxes (`yolov8n-obb.pt`).
+
+#### Option 3 — Train on your own classes
+
+If you need to detect objects that are not in COCO (e.g. specific products, animals, or equipment), you can fine-tune a YOLOv8 model on your own labelled dataset.
+
+**Step 1 — Collect and label images**
+
+[Roboflow](https://roboflow.com) is the easiest way to annotate images and export in YOLO format. Their free tier supports small projects. Alternatively use [Label Studio](https://labelstud.io/) (open-source, self-hosted).
+
+**Step 2 — Train the model**
+
+```python
+from ultralytics import YOLO
+
+# Start from a pre-trained checkpoint (transfer learning)
+model = YOLO("yolov8n.pt")
+
+model.train(
+    data="path/to/dataset.yaml",   # Roboflow exports this file for you
+    epochs=50,
+    imgsz=640,
+    project="models",
+    name="my-custom-model",
+)
+```
+
+Training produces a `best.pt` weight file in `models/my-custom-model/weights/`.
+
+**Step 3 — Use your custom model**
+
+Copy or symlink `best.pt` into the `models/` directory, then set the model in the sidebar or `.env`:
+
+```
+YOLO_MODEL=models/my-custom-model/weights/best.pt
+```
+
+The class labels are embedded in the `.pt` file — no additional configuration needed. The sidebar class filter works with your custom class names too.
+
+---
+
 ## Stream settings
 
 Click the **gear icon** in the top-right header to open the Stream Settings modal:
@@ -284,6 +384,11 @@ Full list of configurable fields:
 | `motion_center_enabled` | bool | Show/hide center dot |
 | `motion_center_color` | string | Center dot color (`#rrggbb`) |
 | `motion_center_radius` | int | Center dot radius in px |
+| `enable_detection` | bool | YOLOv8 object detection on/off |
+| `yolo_model` | string | Model weights file, e.g. `yolov8n.pt` or a custom `.pt` path |
+| `yolo_confidence` | float | Minimum detection confidence (0.05–0.95) |
+| `yolo_skip_frames` | int | Run inference every N frames (1–10) |
+| `detect_classes` | string | Comma-separated class filter, empty = all classes |
 | `recording_output_dir` | string | Output directory for recordings |
 | `recording_project_name` | string | Project name token in filename patterns |
 | `recording_filename_pattern` | string | Filename pattern (see Recording section) |
@@ -351,5 +456,4 @@ See [`architecture.md`](architecture.md) for the full system design, data flow, 
 
 ## Roadmap
 
-- **Phase 4** — Object/person detection: YOLOv8 bounding boxes with class labels and confidence scores
 - **Phase 5** — Polish: Docker packaging, reconnection hardening, unit tests

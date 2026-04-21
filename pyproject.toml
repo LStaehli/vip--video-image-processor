@@ -11,10 +11,6 @@ dependencies = [
     "aiosqlite>=0.20",
     "aiosmtplib>=3.0",
     "python-dotenv>=1.0",
-]
-
-[project.optional-dependencies]
-detection = [
     "ultralytics>=8.1",
 ]
 dev = [

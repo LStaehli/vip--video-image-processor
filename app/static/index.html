@@ -151,17 +151,61 @@
         </div>
       </section>
 
-      <!-- ── Object Detection (Phase 4) ── -->
+      <!-- ── Object Detection ── -->
       <section class="feature-section" id="section-detection">
         <div class="feature-header">
           <h2>Object Detection</h2>
           <label class="toggle-switch">
-            <input type="checkbox" id="toggle-detection" disabled />
+            <input type="checkbox" id="toggle-detection" />
             <span class="slider"></span>
           </label>
         </div>
-        <div class="feature-body collapsed">
-          <p class="coming-soon">Coming in Phase 4</p>
+        <div class="feature-body collapsed" id="detection-body">
+
+          <div id="det-loading" class="det-loading hidden">
+            <span class="det-spinner"></span>
+            <span id="det-loading-label">Loading model…</span>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="det-model">Model</label>
+            </div>
+            <select id="det-model" class="select-input">
+              <option value="yolov8n.pt">YOLOv8 Nano  — fastest</option>
+              <option value="yolov8s.pt">YOLOv8 Small</option>
+              <option value="yolov8m.pt">YOLOv8 Medium</option>
+              <option value="yolov8l.pt">YOLOv8 Large</option>
+              <option value="yolov8x.pt">YOLOv8 XLarge — most accurate</option>
+            </select>
+            <div class="field-hint">Model downloads automatically on first use.</div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="det-confidence">Confidence</label>
+              <span class="field-value" id="det-confidence-val"></span>
+            </div>
+            <input type="range" id="det-confidence" min="5" max="95" step="5" />
+            <div class="field-hint">Minimum score to show a detection</div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="det-skip">Run every</label>
+              <span class="field-value" id="det-skip-val"></span>
+            </div>
+            <input type="range" id="det-skip" min="1" max="10" step="1" />
+            <div class="field-hint">Frames between inference calls — higher = faster stream</div>
+          </div>
+
+          <div class="field">
+            <label for="det-classes">Class filter</label>
+            <input type="text" id="det-classes" class="text-input"
+                   placeholder="person, car, dog  (empty = all)" spellcheck="false" />
+            <div class="field-hint">Comma-separated COCO class names to show. Leave empty to detect all 80 classes.</div>
+          </div>
+
         </div>
       </section>
 

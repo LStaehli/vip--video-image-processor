@@ -86,6 +86,64 @@ dilateSlider.addEventListener('input', debounce(() => {
   patchConfig({ motion_dilate_kernel: parseInt(dilateSlider.value) });
 }, DEBOUNCE_MS));
 
+// ── Object Detection ──────────────────────────────────────────────────────────
+
+const detToggle      = document.getElementById('toggle-detection');
+const detModel       = document.getElementById('det-model');
+const detConfidence  = document.getElementById('det-confidence');
+const detConfidenceVal = document.getElementById('det-confidence-val');
+const detSkip        = document.getElementById('det-skip');
+const detSkipVal     = document.getElementById('det-skip-val');
+const detClasses     = document.getElementById('det-classes');
+
+detToggle.addEventListener('change', () => {
+  patchConfig({ enable_detection: detToggle.checked });
+});
+
+detModel.addEventListener('change', () => {
+  patchConfig({ yolo_model: detModel.value });
+});
+
+detConfidence.addEventListener('input', () => {
+  detConfidenceVal.textContent = `${detConfidence.value}%`;
+});
+detConfidence.addEventListener('input', debounce(() => {
+  patchConfig({ yolo_confidence: parseInt(detConfidence.value) / 100 });
+}, DEBOUNCE_MS));
+
+detSkip.addEventListener('input', () => {
+  detSkipVal.textContent = `${detSkip.value}f`;
+});
+detSkip.addEventListener('input', debounce(() => {
+  patchConfig({ yolo_skip_frames: parseInt(detSkip.value) });
+}, DEBOUNCE_MS));
+
+detClasses.addEventListener('change', debounce(() => {
+  patchConfig({ detect_classes: detClasses.value.trim() });
+}, DEBOUNCE_MS));
+
+// ── Model loading indicator ───────────────────────────────────────────────────
+
+const detLoading      = document.getElementById('det-loading');
+const detLoadingLabel = document.getElementById('det-loading-label');
+const detSection      = document.getElementById('section-detection');
+
+window.addEventListener('vip:event', (e) => {
+  const { type, model } = e.detail ?? {};
+  if (type === 'model_loading') {
+    detLoadingLabel.textContent = `Loading ${model ?? 'model'}…`;
+    detLoading.classList.remove('hidden');
+    // Expand the panel so the indicator is visible
+    const body = detSection.querySelector('.feature-body');
+    if (body) body.classList.remove('collapsed');
+  } else if (type === 'model_ready' || type === 'model_error') {
+    detLoading.classList.add('hidden');
+    if (type === 'model_error') {
+      detLoadingLabel.textContent = 'Load failed';
+    }
+  }
+});
+
 // ── Populate UI from server config on load ────────────────────────────────────
 
 async function loadConfig() {
@@ -108,6 +166,19 @@ async function loadConfig() {
 
     dilateSlider.value = data.motion_dilate_kernel;
     dilateVal.textContent  = data.motion_dilate_kernel;
+
+    // Detection
+    detToggle.checked = data.enable_detection;
+    if (data.yolo_model)     detModel.value = data.yolo_model;
+    if (data.yolo_confidence !== undefined) {
+      detConfidence.value = Math.round(data.yolo_confidence * 100);
+      detConfidenceVal.textContent = `${detConfidence.value}%`;
+    }
+    if (data.yolo_skip_frames !== undefined) {
+      detSkip.value = data.yolo_skip_frames;
+      detSkipVal.textContent = `${data.yolo_skip_frames}f`;
+    }
+    if (data.detect_classes !== undefined) detClasses.value = data.detect_classes;
 
   } catch (e) {
     console.warn('failed to load config', e);
