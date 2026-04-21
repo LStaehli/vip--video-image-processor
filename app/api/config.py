@@ -36,6 +36,7 @@ class ConfigUpdate(BaseModel):
     enable_motion: Optional[bool] = None
     enable_zones: Optional[bool] = None
     enable_detection: Optional[bool] = None
+    zone_stop_mode: Optional[str] = None   # "zone" or "stream"
     # Motion tuning
     motion_min_area: Optional[int] = Field(None, ge=0)
     motion_trail_length: Optional[int] = Field(None, ge=1, le=60)
@@ -75,6 +76,7 @@ async def get_config():
         "enable_motion": settings.enable_motion,
         "enable_zones": settings.enable_zones,
         "enable_detection": settings.enable_detection,
+        "zone_stop_mode": settings.zone_stop_mode,
         "motion_min_area": settings.motion_min_area,
         "motion_trail_length": settings.motion_trail_length,
         "motion_mog2_threshold": settings.motion_mog2_threshold,
@@ -139,6 +141,11 @@ async def update_config(update: ConfigUpdate):
     if update.motion_dilate_kernel is not None:
         settings.motion_dilate_kernel = update.motion_dilate_kernel
         logger.info("motion_dilate_kernel updated to %d", update.motion_dilate_kernel)
+
+    if update.zone_stop_mode is not None:
+        if update.zone_stop_mode in ("zone", "stream"):
+            settings.zone_stop_mode = update.zone_stop_mode
+            logger.info("zone_stop_mode updated to %s", update.zone_stop_mode)
 
     # Visual style — simply write through to settings; processor reads on every frame
     visual_fields = [

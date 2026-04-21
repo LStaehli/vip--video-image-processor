@@ -133,6 +133,19 @@
         <div class="feature-body collapsed" id="zones-body">
           <p class="field-hint">Click "Draw zone", then click on the video to place vertices. Click the first point or double-click to close the shape.</p>
           <p class="field-hint zones-warning">Requires Motion Tracking to detect objects.</p>
+
+          <div class="field">
+            <div class="field-label-small">Stop recording when</div>
+            <label class="radio-label">
+              <input type="radio" name="zone-stop" id="zone-stop-zone" value="zone" />
+              No movement in zone
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="zone-stop" id="zone-stop-stream" value="stream" />
+              No movement in stream
+            </label>
+          </div>
+
           <button class="btn-secondary" id="btn-draw-zone">Draw zone</button>
           <div id="zone-list"></div>
         </div>

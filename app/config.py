@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     enable_zones: bool = False
     enable_detection: bool = False
 
+    # Detection zone behaviour
+    # "zone"   — stop recording when there is no more movement inside any zone
+    # "stream" — stop recording only when there is no movement anywhere in the stream
+    zone_stop_mode: str = "zone"
+
     # Motion processor tuning
     motion_min_area: int = 3500       # px² — minimum contour area to track
     motion_trail_length: int = 30     # number of historical positions in trail

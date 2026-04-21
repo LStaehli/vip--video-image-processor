@@ -72,6 +72,7 @@ async def lifespan(app: FastAPI):
     from app.services.recording import RecordingService
     recorder = RecordingService()
     pipeline._recorder = recorder
+    zone_proc._recorder = recorder   # zone processor starts/stops recording autonomously
 
     from app.api import recording as recording_api
     recording_api.init(recorder=recorder, pipeline=pipeline)

@@ -18,6 +18,7 @@ const zCtx        = zoneCanvas.getContext('2d');
 const zonesToggle = document.getElementById('toggle-zones');
 const btnDraw     = document.getElementById('btn-draw-zone');
 const zoneList    = document.getElementById('zone-list');
+const stopRadios  = document.querySelectorAll('input[name="zone-stop"]');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -44,9 +45,35 @@ fetch('/api/config')
   .then(r => r.json())
   .then(cfg => {
     zonesToggle.checked = cfg.enable_zones ?? false;
-    console.log('[zones] initial state: enable_zones =', zonesToggle.checked);
+    const mode = cfg.zone_stop_mode ?? 'zone';
+    stopRadios.forEach(r => { r.checked = (r.value === mode); });
+    console.log('[zones] initial state: enable_zones =', zonesToggle.checked, '| stop_mode =', mode);
   })
   .catch(e => console.warn('[zones] failed to load config', e));
+
+// Stop mode radio buttons
+stopRadios.forEach(radio => {
+  radio.addEventListener('change', () => {
+    console.log('[zones] stop mode →', radio.value);
+    fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zone_stop_mode: radio.value }),
+    });
+  });
+});
+
+// Keep the header record button in sync when zone recording starts/stops
+window.addEventListener('vip:event', (e) => {
+  const { type, file } = e.detail;
+  if (type === 'recording_started') {
+    console.log('[zones] recording started by zone trigger →', file);
+    _setRecordingState(true);
+  } else if (type === 'recording_stopped') {
+    console.log('[zones] recording stopped by zone inactivity →', file);
+    _setRecordingState(false);
+  }
+});
 
 // ── Draw button ───────────────────────────────────────────────────────────────
 
