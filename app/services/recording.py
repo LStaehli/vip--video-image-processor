@@ -7,9 +7,12 @@ that supports the following variables:
     {project_name}       — settings.recording_project_name
     {current_date}       — YYYY-MM-DD
     {current_timestamp}  — YYYY-MM-DD_HH-MM-SS
+
+Each recording session is logged to the database on start and finalised
+(end_time, duration) on stop.
 """
+import asyncio
 import logging
-import os
 import time
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +21,7 @@ import cv2
 import numpy as np
 
 from app.config import settings
+from app.services import database as db
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +33,18 @@ class RecordingService:
         self._writer: cv2.VideoWriter | None = None
         self._current_file: str | None = None
         self._started_at: float | None = None
+        self._recording_id: str | None = None
 
     # ── Public API ────────────────────────────────────────────────────────────
 
-    def start(self, frame_width: int, frame_height: int) -> str:
+    def start(
+        self,
+        frame_width: int,
+        frame_height: int,
+        trigger: str = "manual",
+        trigger_zone_id: str | None = None,
+        trigger_face_name: str | None = None,
+    ) -> str:
         """Begin recording. Returns the resolved output file path."""
         if self.is_recording:
             raise RuntimeError("Recording already in progress")
@@ -51,8 +63,20 @@ class RecordingService:
 
         self._current_file = filepath
         self._started_at = time.monotonic()
+        self._recording_id = db.new_id()
         self.is_recording = True
-        logger.info("Recording started → %s", filepath)
+
+        asyncio.ensure_future(
+            db.insert_recording(
+                self._recording_id,
+                filepath,
+                trigger,
+                trigger_zone_id,
+                trigger_face_name,
+            )
+        )
+
+        logger.info("Recording started → %s (trigger=%s)", filepath, trigger)
         return filepath
 
     def stop(self) -> str:
@@ -63,10 +87,17 @@ class RecordingService:
         self._writer.release()
         self._writer = None
         self.is_recording = False
+
         filepath = self._current_file
         duration = time.monotonic() - self._started_at
-        self._started_at = None
+        recording_id = self._recording_id
+
         self._current_file = None
+        self._started_at = None
+        self._recording_id = None
+
+        asyncio.ensure_future(db.finalize_recording(recording_id, duration))
+
         logger.info("Recording stopped — saved to %s (%.1fs)", filepath, duration)
         return filepath
 
@@ -81,13 +112,11 @@ class RecordingService:
         Args:
             frame:  The image to save.
             suffix: Appended to the resolved filename before the extension.
-                    Defaults to ``_screenshot``; pass e.g. ``_autoenroll``
-                    for auto-enrollment captures.
 
         Returns:
             The saved file path.
         """
-        base = self._resolve_path()  # e.g. recordings/vip_2026-04-21_14-31-42.mp4
+        base = self._resolve_path()
         filepath = base[:-4] + f"{suffix}.jpg"
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         ok = cv2.imwrite(filepath, frame)
@@ -99,6 +128,11 @@ class RecordingService:
     @property
     def current_file(self) -> str | None:
         return self._current_file
+
+    @property
+    def recording_id(self) -> str | None:
+        """DB recording UUID, available while is_recording is True."""
+        return self._recording_id
 
     @property
     def elapsed_seconds(self) -> float:
@@ -119,8 +153,5 @@ class RecordingService:
         for key, value in variables.items():
             filename = filename.replace(key, value)
 
-        # Strip any path separators that slipped in from the pattern
         filename = filename.replace("/", "_").replace("\\", "_")
-
-        output_dir = Path(settings.recording_output_dir)
-        return str(output_dir / f"{filename}.mp4")
+        return str(Path(settings.recording_output_dir) / f"{filename}.mp4")

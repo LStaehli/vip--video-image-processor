@@ -19,6 +19,7 @@ A Python web application that ingests a live video stream (webcam or Raspberry P
 | ✅ Done | Screenshot capture — save a single annotated frame to disk at any time |
 | ✅ Done | Object detection — YOLOv8 bounding boxes with class labels and confidence scores, configurable model and class filter |
 | ✅ Done | Face recognition — Facenet512/ArcFace embeddings, manual enrollment, auto-enrollment, landmark overlay, rename |
+| ✅ Done | SQLite database — persisted zones, recording metadata, zone events, face recognition history |
 | 🔜 Phase 5 | Polish: Docker packaging, reconnection hardening, unit tests |
 
 ---
@@ -27,6 +28,7 @@ A Python web application that ingests a live video stream (webcam or Raspberry P
 
 - **Backend:** Python 3.11+, [FastAPI](https://fastapi.tiangolo.com/), [OpenCV](https://opencv.org/), [uvicorn](https://www.uvicorn.org/)
 - **Computer vision:** OpenCV (motion tracking + zone detection), [YOLOv8 / ultralytics](https://docs.ultralytics.com/) (object detection), [DeepFace](https://github.com/serengil/deepface) (face recognition)
+- **Database:** SQLite via [aiosqlite](https://github.com/omnilib/aiosqlite) — zones, recordings, events, face embeddings
 - **Real-time transport:** WebSocket (binary JPEG frames + JSON events) + MJPEG fallback
 - **Frontend:** Vanilla HTML / JS / CSS — no framework
 - **Package manager:** [uv](https://docs.astral.sh/uv/)
@@ -57,8 +59,9 @@ vip--video-image-processor/
 │   │   ├── zones.py             # GET/POST/DELETE /api/zones
 │   │   └── faces.py             # GET/POST/PATCH/DELETE /api/faces
 │   ├── services/
-│   │   ├── recording.py         # RecordingService — VideoWriter lifecycle
-│   │   └── face_store.py        # Face embedding store — in-memory + faces.json
+│   │   ├── database.py          # SQLite service — schema, all DB operations
+│   │   ├── recording.py         # RecordingService — VideoWriter lifecycle + DB logging
+│   │   └── face_store.py        # Face embedding store — in-memory + SQLite backend
 │   └── static/                  # Browser frontend (HTML/JS/CSS)
 │       ├── index.html
 │       ├── css/app.css
@@ -69,7 +72,7 @@ vip--video-image-processor/
 │           └── notifications.js # Alert notification display
 ├── models/                      # Model weights (git-ignored, downloaded on first use)
 ├── recordings/                  # Default output directory for recordings (git-ignored)
-├── faces.json                   # Enrolled face embeddings + metadata (git-ignored)
+├── vip.db                       # SQLite database (git-ignored)
 ├── architecture.md              # Full system architecture
 ├── pyproject.toml
 └── .env
@@ -116,6 +119,7 @@ Copy `.env.example` to `.env` and edit as needed:
 | `RECORDING_OUTPUT_DIR` | `recordings` | Directory where recordings and screenshots are saved |
 | `RECORDING_PROJECT_NAME` | `vip` | Project name used in filename patterns |
 | `RECORDING_FILENAME_PATTERN` | `{project_name}_{current_timestamp}` | Filename template |
+| `DB_PATH` | `vip.db` | SQLite database file path |
 | `ZONE_STOP_MODE` | `zone` | When to stop zone-triggered recording: `zone` or `stream` |
 | `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG` for diagnostics) |
 
@@ -170,6 +174,8 @@ Click **Visual settings…** to open a modal for fine-tuning the appearance of e
 ## Detection Zones
 
 Detection zones let you draw one or more polygon areas on the video frame. When a tracked object enters a zone, recording starts automatically. Recording stops after a configurable grace period once the zone (or stream) is inactive.
+
+Zones are persisted in the SQLite database and reloaded automatically on server restart — no need to redraw them.
 
 > **Prerequisite:** Motion Tracking must be enabled — zones use the centroids produced by the motion processor to detect presence.
 
@@ -316,7 +322,7 @@ Enable the **Face Recognition** toggle in the sidebar to activate face detection
 1. Make sure Face Recognition is enabled and the model has finished loading.
 2. Position your face clearly in front of the camera.
 3. Click **Enroll face…** and enter a name.
-4. The embedding is saved immediately to `faces.json` and the face is active on the next frame.
+4. The embedding is saved immediately to the database and the face is active on the next frame.
 
 ### Auto-enrollment
 
@@ -333,7 +339,7 @@ Each entry in the sidebar face list shows the name and enrollment timestamp.
 | Rename | Click the ✎ icon, enter a new name in the prompt |
 | Delete | Click the × button |
 
-Renaming and deletion update both the in-memory store and `faces.json` immediately.
+Renaming and deletion update both the in-memory store and the database immediately. Enrolled faces survive server restarts.
 
 ### Landmark overlay
 

@@ -55,7 +55,6 @@ class Settings(BaseSettings):
     face_model: str = "Facenet512"          # Facenet512 (fast) or ArcFace (most accurate)
     face_similarity_threshold: float = 0.4  # cosine similarity — higher = stricter
     face_skip_frames: int = 3
-    face_store_path: str = "faces.json"     # persisted reference embeddings
     face_show_landmarks: bool = True        # overlay eye/nose/mouth points and lines
     face_auto_enroll: bool = False          # auto-enroll unknown faces above quality threshold
     face_auto_enroll_min_score: float = 0.85  # minimum det_score to trigger auto-enroll

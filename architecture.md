@@ -14,6 +14,7 @@ VIP is a Python web application that ingests a live video stream (webcam or Rasp
 | CV & streaming | OpenCV (`cv2`) | Unified `VideoCapture` for RTSP/MJPEG/webcam + drawing primitives |
 | Object detection | YOLOv8 (`ultralytics`) | Works directly on numpy arrays; nano variant fits real-time budget |
 | Face recognition | DeepFace | Pure-Python, macOS ARM compatible; Facenet512/ArcFace embeddings |
+| Database | SQLite + aiosqlite | Zero-dependency async persistence; single WAL-mode file |
 | Package manager | uv | Fast, modern Python package manager |
 | Frontend | Vanilla HTML / JS / CSS | Canvas rendering; no framework overhead needed |
 
@@ -93,7 +94,9 @@ Uses OpenCV MOG2 background subtraction to detect moving regions. Applies morpho
 
 ### ZoneProcessor
 
-Stores zones as in-memory dicts with polygon points in normalised 0–1 coordinates. On each frame, tests all motion centroids against all zones using `cv2.pointPolygonTest`. When a centroid enters a zone, delegates to `RecordingService` to start recording. Recording stops after a 10-second inactivity grace period. Stop condition is configurable: inactivity inside the zone only, or inactivity in the entire stream.
+Stores zones as in-memory dicts with polygon points in normalised 0–1 coordinates. Zone definitions are persisted in SQLite: `add_zone`/`remove_zone`/`clear_zones` fire async DB writes so the API-facing functions remain synchronous. On startup, saved zones are reloaded from the DB into the in-memory dict.
+
+On each frame, tests all motion centroids against all zones using `cv2.pointPolygonTest`. Per-zone edge detection (`_active_zones` set) distinguishes newly-entered zones from zones that are already active — a `zone_events` DB row is written only on the first hit, linked to the current `recording_id`. When a centroid enters a zone, delegates to `RecordingService` to start recording. Recording stops after a 10-second inactivity grace period. Stop condition is configurable: inactivity inside the zone only, or inactivity in the entire stream.
 
 ### DetectionProcessor
 
@@ -115,9 +118,29 @@ Per frame (every N frames, configurable):
 
 ## Services
 
+### Database
+
+`database.py` owns a single persistent `aiosqlite` connection (WAL mode, foreign keys on) opened at startup and closed at shutdown. All table operations live here so the rest of the codebase has a single import point.
+
+**Schema:**
+
+| Table | Purpose |
+|---|---|
+| `zones` | Persisted zone definitions — id, name, polygon (JSON), created_at |
+| `recordings` | Every recording session — path, start/end time, duration, trigger type and source |
+| `zone_events` | Each time motion entered a zone — zone reference, timestamp, recording FK |
+| `face_recognition_events` | Rate-limited recognition hits — face name, similarity, timestamp, recording FK |
+| `faces` | Enrolled embeddings — name (PK), BLOB, created_at, updated_at |
+
+Recordings use a UUID primary key generated synchronously at `start()` time, so processors can immediately reference `recording_id` when logging correlated zone or face events without waiting for the async DB insert to complete.
+
 ### RecordingService
 
 `RecordingService` wraps an OpenCV `VideoWriter`. It is shared between manual control (header record button → `/api/recording/start|stop`), automatic zone-triggered recording (`ZoneProcessor`), and face auto-enrollment screenshots (`FaceProcessor`). A guard prevents double-starts.
+
+`start()` accepts `trigger`, `trigger_zone_id`, and `trigger_face_name` to tag the recording's origin. It generates a UUID `recording_id` synchronously and fires an async DB insert — callers can read `recorder.recording_id` immediately to correlate zone/face events.
+
+`stop()` finalises the DB row with `end_time` and `duration_seconds`.
 
 `save_screenshot(frame, suffix)` saves a single JPEG derived from the recording filename pattern. The `suffix` parameter allows callers to distinguish screenshot types (e.g. `_screenshot`, `_autoenroll`).
 
@@ -125,15 +148,11 @@ Output filenames are built from a user-configurable pattern supporting `{project
 
 ### FaceStore
 
-`face_store.py` is a module-level singleton that persists enrolled face embeddings as a JSON file. The in-memory store is a dict mapping `name → np.ndarray` (embedding). The JSON format stores embeddings alongside metadata:
+`face_store.py` is a module-level singleton backed by the `faces` SQLite table. The in-memory dict (`name → {embedding, created_at}`) is the hot path for per-frame cosine similarity search. All mutations (`add_face`, `rename_face`, `remove_face`, `clear`) update the in-memory dict synchronously then fire an async DB write via `asyncio.ensure_future()`, preserving the sync processor API while writing through to storage.
 
-```json
-{
-  "Alice": { "embedding": [...], "created_at": "2026-04-21T14:31:42" }
-}
-```
+`init()` is async and is awaited at startup to populate the in-memory store from the DB. Enrolled faces survive server restarts.
 
-Old flat format (`name → list`) is automatically migrated and re-saved on first load. Functions: `init()`, `all_faces()`, `face_list()`, `add_face()`, `rename_face()`, `remove_face()`, `clear()`. Cosine similarity search is a linear scan — adequate for ≤1000 enrolled faces.
+Functions: `init()`, `all_faces()`, `face_list()`, `add_face()`, `rename_face()`, `remove_face()`, `clear()`. Cosine similarity search is a linear scan — adequate for ≤1000 enrolled faces.
 
 ---
 
@@ -204,8 +223,9 @@ vip--video-image-processor/
 │   │   └── faces.py             # GET|POST|PATCH|DELETE /api/faces
 │   │
 │   ├── services/
-│   │   ├── recording.py         # RecordingService: VideoWriter lifecycle + screenshot
-│   │   └── face_store.py        # FaceStore: in-memory embeddings + JSON persistence
+│   │   ├── database.py          # SQLite service: schema, connection lifecycle, all DB ops
+│   │   ├── recording.py         # RecordingService: VideoWriter lifecycle + DB logging
+│   │   └── face_store.py        # FaceStore: in-memory embeddings + SQLite backend
 │   │
 │   └── static/
 │       ├── index.html           # Single-page app shell + all modals
@@ -219,7 +239,7 @@ vip--video-image-processor/
 │
 ├── models/                      # YOLOv8 weights — downloaded on first use, git-ignored
 ├── recordings/                  # Default output for recordings and screenshots, git-ignored
-└── faces.json                   # Enrolled face embeddings + metadata, git-ignored
+└── vip.db                       # SQLite database — zones, recordings, events, faces (git-ignored)
 ```
 
 ---
@@ -234,6 +254,12 @@ MOG2 background subtraction adapts to lighting changes and multi-modal backgroun
 
 ### YOLO loaded in a thread pool
 `YOLO("yolov8n.pt")` blocks for several seconds on first load. Running it in a `ThreadPoolExecutor` keeps the asyncio event loop — and therefore the video stream — live during download and initialisation. The browser shows a spinner while loading via `model_loading`/`model_ready` WebSocket events.
+
+### SQLite over a server database
+VIP is a single-process application deployed on one machine. SQLite in WAL mode handles the write patterns here (infrequent zone events, recording metadata, face enrollments) with zero operational overhead — no separate process, no connection pool, no migrations tool. aiosqlite wraps it in an async interface that integrates naturally with FastAPI's event loop.
+
+### UUID primary keys for recordings
+Recording UUIDs are generated synchronously by `RecordingService.start()` before any DB call is made. This lets processors immediately reference `recording_id` when logging correlated zone or face events via `asyncio.ensure_future()` — no need to await the recording insert or pass the id through callbacks.
 
 ### DeepFace over InsightFace for face recognition
 InsightFace (`buffalo_s`) failed to build on macOS ARM due to missing C++ headers (`cmath` not found). DeepFace is pure Python, pip-installable on all platforms, and supports multiple production-grade embedding models (Facenet512, ArcFace). The same non-blocking thread-pool load pattern used by YOLO is applied to DeepFace model warm-up.

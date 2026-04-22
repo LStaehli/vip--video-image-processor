@@ -22,6 +22,7 @@ import numpy as np
 
 from app.config import settings
 from app.processors.base import BaseProcessor, FrameState
+from app.services import database as db
 from app.services import face_store
 
 logger = logging.getLogger(__name__)
@@ -265,6 +266,7 @@ class FaceProcessor(BaseProcessor):
         if not self._ws_manager:
             return
         now = time.monotonic()
+        recording_id = self._recorder.recording_id if self._recorder else None
         for r in results:
             if r.name == "Unknown":
                 continue
@@ -277,6 +279,9 @@ class FaceProcessor(BaseProcessor):
                     "name": r.name,
                     "similarity": round(r.similarity, 2),
                 })
+            )
+            asyncio.ensure_future(
+                db.log_face_event(r.name, r.similarity, recording_id)
             )
 
     # ── Drawing ───────────────────────────────────────────────────────────────

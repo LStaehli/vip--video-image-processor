@@ -39,6 +39,10 @@ async def lifespan(app: FastAPI):
     # ── Startup ──────────────────────────────────────────────────────────────
     loop = asyncio.get_running_loop()
 
+    # Initialise database first — other services depend on it
+    from app.services import database as db_service
+    await db_service.init(settings.db_path)
+
     ws_manager = WebSocketManager()
     reader = StreamReader(source=settings.stream_source, loop=loop)
     pipeline = FramePipeline(input_queue=reader.queue, ws_manager=ws_manager)
@@ -51,11 +55,17 @@ async def lifespan(app: FastAPI):
     pipeline.add_processor(motion_proc)
     logger.info("MotionProcessor added (enabled=%s)", motion_proc.enabled)
 
-    from app.processors.zones import ZoneProcessor
+    from app.processors.zones import Zone, ZoneProcessor, zones as zone_store
     zone_proc = ZoneProcessor(ws_manager=ws_manager)
     zone_proc.enabled = settings.enable_zones
     pipeline.add_processor(zone_proc)
     logger.info("ZoneProcessor added (enabled=%s)", zone_proc.enabled)
+
+    # Restore persisted zones into the in-memory store
+    saved_zones = await db_service.load_zones()
+    for z in saved_zones:
+        zone_store[z["id"]] = Zone(id=z["id"], name=z["name"], polygon=z["polygon"])
+    logger.info("Loaded %d zone(s) from DB", len(saved_zones))
 
     from app.processors.detection import DetectionProcessor
     det_proc = DetectionProcessor()
@@ -66,7 +76,7 @@ async def lifespan(app: FastAPI):
 
     from app.processors.faces import FaceProcessor
     from app.services import face_store
-    face_store.init(settings.face_store_path)
+    await face_store.init()
     face_proc = FaceProcessor()
     face_proc.enabled = settings.enable_faces
     face_proc._ws_manager = ws_manager
@@ -112,6 +122,7 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
     reader.stop()
+    await db_service.close()
     logger.info("VIP shut down cleanly")
 
 
