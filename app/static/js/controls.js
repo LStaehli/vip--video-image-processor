@@ -86,6 +86,14 @@ dilateSlider.addEventListener('input', debounce(() => {
   patchConfig({ motion_dilate_kernel: parseInt(dilateSlider.value) });
 }, DEBOUNCE_MS));
 
+// ── Detection Zones ───────────────────────────────────────────────────────────
+
+const zoneNotifToggle = document.getElementById('toggle-zone-notif');
+
+zoneNotifToggle?.addEventListener('change', () => {
+  patchConfig({ notify_on_zone_trigger: zoneNotifToggle.checked });
+});
+
 // ── Object Detection ──────────────────────────────────────────────────────────
 
 const detToggle      = document.getElementById('toggle-detection');
@@ -314,6 +322,11 @@ async function loadConfig() {
 
     dilateSlider.value = data.motion_dilate_kernel;
     dilateVal.textContent  = data.motion_dilate_kernel;
+
+    // Zones
+    if (data.notify_on_zone_trigger !== undefined) {
+      zoneNotifToggle.checked = data.notify_on_zone_trigger;
+    }
 
     // Detection
     detToggle.checked = data.enable_detection;

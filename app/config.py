@@ -60,7 +60,7 @@ class Settings(BaseSettings):
     face_auto_enroll_min_score: float = 0.85  # minimum det_score to trigger auto-enroll
 
     # Notifications — all fields optional; unconfigured channels are silently skipped
-    notify_on_zone_trigger: bool = True
+    notify_on_zone_trigger: bool = False
     notify_cooldown: int = 60   # seconds between repeated alerts for the same zone
 
     # Telegram (optional)

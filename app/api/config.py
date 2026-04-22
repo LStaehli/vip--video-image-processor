@@ -68,6 +68,8 @@ class ConfigUpdate(BaseModel):
     face_show_landmarks: Optional[bool] = None
     face_auto_enroll: Optional[bool] = None
     face_auto_enroll_min_score: Optional[float] = Field(None, ge=0.5, le=1.0)
+    # Notifications
+    notify_on_zone_trigger: Optional[bool] = None
 
 
 @router.get("")
@@ -117,6 +119,7 @@ async def get_config():
         "face_show_landmarks": settings.face_show_landmarks,
         "face_auto_enroll": settings.face_auto_enroll,
         "face_auto_enroll_min_score": settings.face_auto_enroll_min_score,
+        "notify_on_zone_trigger": settings.notify_on_zone_trigger,
         "processors": processor_states,
     }
 
@@ -196,6 +199,11 @@ async def update_config(update: ConfigUpdate):
         if val is not None:
             setattr(settings, field_name, val)
             logger.info("%s updated to %s", field_name, val)
+
+    # Boolean flags need explicit None-check so False is not treated as falsy
+    if update.notify_on_zone_trigger is not None:
+        settings.notify_on_zone_trigger = update.notify_on_zone_trigger
+        logger.info("notify_on_zone_trigger updated to %s", update.notify_on_zone_trigger)
 
     if _pipeline:
         toggle_map = {

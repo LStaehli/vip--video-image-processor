@@ -172,11 +172,27 @@ class ZoneProcessor(BaseProcessor):
             # Log DB event and send notifications for each newly-hit zone
             recording_id = self._recorder.recording_id if self._recorder else None
             recording_path = self._recorder.current_file if self._recorder else None
+
+            # Always save a local screenshot on zone trigger
+            if self._recorder:
+                try:
+                    self._recorder.save_screenshot(frame, suffix="_zonetrigger")
+                except Exception as exc:
+                    logger.warning("Zone trigger screenshot failed: %s", exc)
+
+            # Encode snapshot for notifications only when notifications are enabled
+            snapshot: bytes | None = None
+            if self._notifier and settings.notify_on_zone_trigger:
+                ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                snapshot = buf.tobytes() if ok else None
+
             for zone in newly_hit:
                 asyncio.ensure_future(db.log_zone_event(zone.id, zone.name, recording_id))
                 if self._notifier and settings.notify_on_zone_trigger:
                     asyncio.ensure_future(
-                        self._notifier.notify_zone_trigger(zone.id, zone.name, recording_path)
+                        self._notifier.notify_zone_trigger(
+                            zone.id, zone.name, recording_path, snapshot
+                        )
                     )
 
         elif self._zone_recording and self._recorder.is_recording:
