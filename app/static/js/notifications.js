@@ -13,7 +13,12 @@ const NOTIF_TTL  = 15_000; // ms
 window.addEventListener('vip:event', (e) => {
   const payload = e.detail;
   if (payload.type === 'zone_alert') {
-    addNotification(`⚠ ${payload.zone}`, 'alarm');
+    addNotification(`Zone alert: ${payload.zone}`, 'alarm');
+  } else if (payload.type === 'face_recognized') {
+    const pct = Math.round((payload.similarity ?? 0) * 100);
+    addNotification(`Face recognised: ${payload.name} (${pct}%)`, 'face');
+  } else if (payload.type === 'face_enrolled') {
+    addNotification(`Auto-enrolled: ${payload.name}`, 'face');
   }
 });
 

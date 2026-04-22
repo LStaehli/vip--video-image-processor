@@ -64,6 +64,15 @@ async def lifespan(app: FastAPI):
     pipeline.add_processor(det_proc)
     logger.info("DetectionProcessor added (enabled=%s)", det_proc.enabled)
 
+    from app.processors.faces import FaceProcessor
+    from app.services import face_store
+    face_store.init(settings.face_store_path)
+    face_proc = FaceProcessor()
+    face_proc.enabled = settings.enable_faces
+    face_proc._ws_manager = ws_manager
+    pipeline.add_processor(face_proc)
+    logger.info("FaceProcessor added (enabled=%s)", face_proc.enabled)
+
     # Inject dependencies into route handlers
     from app.api import stream as stream_api
     stream_api.init(ws_manager=ws_manager, pipeline=pipeline, reader=reader)
@@ -75,9 +84,13 @@ async def lifespan(app: FastAPI):
     recorder = RecordingService()
     pipeline._recorder = recorder
     zone_proc._recorder = recorder   # zone processor starts/stops recording autonomously
+    face_proc._recorder = recorder   # face processor saves auto-enroll screenshots
 
     from app.api import recording as recording_api
     recording_api.init(recorder=recorder, pipeline=pipeline)
+
+    from app.api import faces as faces_api
+    faces_api.init(pipeline=pipeline, face_proc=face_proc)
 
     # Start background tasks
     reader.start()
@@ -108,10 +121,12 @@ from app.api.stream import router as stream_router
 from app.api.config import router as config_router
 from app.api.recording import router as recording_router
 from app.api.zones import router as zones_router
+from app.api.faces import router as faces_router
 
 app.include_router(stream_router)
 app.include_router(config_router)
 app.include_router(recording_router)
 app.include_router(zones_router)
+app.include_router(faces_router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

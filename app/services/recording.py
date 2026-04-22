@@ -75,11 +75,20 @@ class RecordingService:
         if self.is_recording and self._writer:
             self._writer.write(frame)
 
-    def save_screenshot(self, frame: np.ndarray) -> str:
-        """Save a single annotated frame as a JPEG. Returns the saved file path."""
+    def save_screenshot(self, frame: np.ndarray, suffix: str = "_screenshot") -> str:
+        """Save a single annotated frame as a JPEG.
+
+        Args:
+            frame:  The image to save.
+            suffix: Appended to the resolved filename before the extension.
+                    Defaults to ``_screenshot``; pass e.g. ``_autoenroll``
+                    for auto-enrollment captures.
+
+        Returns:
+            The saved file path.
+        """
         base = self._resolve_path()  # e.g. recordings/vip_2026-04-21_14-31-42.mp4
-        # Replace .mp4 extension with _screenshot.jpg
-        filepath = base[:-4] + "_screenshot.jpg"
+        filepath = base[:-4] + f"{suffix}.jpg"
         Path(filepath).parent.mkdir(parents=True, exist_ok=True)
         ok = cv2.imwrite(filepath, frame)
         if not ok:

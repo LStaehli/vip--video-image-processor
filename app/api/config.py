@@ -60,6 +60,14 @@ class ConfigUpdate(BaseModel):
     motion_center_color: Optional[str] = None
     motion_center_radius: Optional[int] = Field(None, ge=1, le=30)
     motion_center_enabled: Optional[bool] = None
+    # Face recognition
+    enable_faces: Optional[bool] = None
+    face_model: Optional[str] = None
+    face_similarity_threshold: Optional[float] = Field(None, ge=0.1, le=0.9)
+    face_skip_frames: Optional[int] = Field(None, ge=1, le=10)
+    face_show_landmarks: Optional[bool] = None
+    face_auto_enroll: Optional[bool] = None
+    face_auto_enroll_min_score: Optional[float] = Field(None, ge=0.5, le=1.0)
 
 
 @router.get("")
@@ -102,6 +110,13 @@ async def get_config():
         "motion_center_color": settings.motion_center_color,
         "motion_center_radius": settings.motion_center_radius,
         "motion_center_enabled": settings.motion_center_enabled,
+        "enable_faces": settings.enable_faces,
+        "face_model": settings.face_model,
+        "face_similarity_threshold": settings.face_similarity_threshold,
+        "face_skip_frames": settings.face_skip_frames,
+        "face_show_landmarks": settings.face_show_landmarks,
+        "face_auto_enroll": settings.face_auto_enroll,
+        "face_auto_enroll_min_score": settings.face_auto_enroll_min_score,
         "processors": processor_states,
     }
 
@@ -175,11 +190,19 @@ async def update_config(update: ConfigUpdate):
             setattr(settings, field_name, val)
             logger.info("%s updated to %s", field_name, val)
 
+    for field_name in ("face_model", "face_similarity_threshold", "face_skip_frames",
+                       "face_show_landmarks", "face_auto_enroll", "face_auto_enroll_min_score"):
+        val = getattr(update, field_name, None)
+        if val is not None:
+            setattr(settings, field_name, val)
+            logger.info("%s updated to %s", field_name, val)
+
     if _pipeline:
         toggle_map = {
             "MotionProcessor": update.enable_motion,
             "ZoneProcessor": update.enable_zones,
             "DetectionProcessor": update.enable_detection,
+            "FaceProcessor": update.enable_faces,
         }
         for processor in _pipeline._processors:
             name = type(processor).__name__

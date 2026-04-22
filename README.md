@@ -18,6 +18,7 @@ A Python web application that ingests a live video stream (webcam or Raspberry P
 | ✅ Done | Video recording — start/stop via header button or zone trigger; configurable output directory, project name, and filename pattern |
 | ✅ Done | Screenshot capture — save a single annotated frame to disk at any time |
 | ✅ Done | Object detection — YOLOv8 bounding boxes with class labels and confidence scores, configurable model and class filter |
+| ✅ Done | Face recognition — Facenet512/ArcFace embeddings, manual enrollment, auto-enrollment, landmark overlay, rename |
 | 🔜 Phase 5 | Polish: Docker packaging, reconnection hardening, unit tests |
 
 ---
@@ -25,7 +26,7 @@ A Python web application that ingests a live video stream (webcam or Raspberry P
 ## Tech stack
 
 - **Backend:** Python 3.11+, [FastAPI](https://fastapi.tiangolo.com/), [OpenCV](https://opencv.org/), [uvicorn](https://www.uvicorn.org/)
-- **Computer vision:** OpenCV (motion tracking + zone detection), [YOLOv8 / ultralytics](https://docs.ultralytics.com/) (object detection)
+- **Computer vision:** OpenCV (motion tracking + zone detection), [YOLOv8 / ultralytics](https://docs.ultralytics.com/) (object detection), [DeepFace](https://github.com/serengil/deepface) (face recognition)
 - **Real-time transport:** WebSocket (binary JPEG frames + JSON events) + MJPEG fallback
 - **Frontend:** Vanilla HTML / JS / CSS — no framework
 - **Package manager:** [uv](https://docs.astral.sh/uv/)
@@ -47,14 +48,17 @@ vip--video-image-processor/
 │   │   ├── base.py              # BaseProcessor ABC + FrameState dataclass
 │   │   ├── motion.py            # Motion tracking
 │   │   ├── zones.py             # Detection zones + recording trigger
-│   │   └── detection.py         # YOLOv8 object detection (Phase 4)
+│   │   ├── detection.py         # YOLOv8 object detection
+│   │   └── faces.py             # Face recognition (DeepFace)
 │   ├── api/
 │   │   ├── stream.py            # /ws/video, /ws/events, /stream.mjpeg, /api/status
 │   │   ├── config.py            # GET/PUT /api/config
-│   │   ├── recording.py         # POST /api/recording/start|stop|screenshot, GET /api/recording/status
-│   │   └── zones.py             # GET/POST/DELETE /api/zones
+│   │   ├── recording.py         # POST /api/recording/start|stop|screenshot
+│   │   ├── zones.py             # GET/POST/DELETE /api/zones
+│   │   └── faces.py             # GET/POST/PATCH/DELETE /api/faces
 │   ├── services/
-│   │   └── recording.py         # RecordingService — VideoWriter lifecycle
+│   │   ├── recording.py         # RecordingService — VideoWriter lifecycle
+│   │   └── face_store.py        # Face embedding store — in-memory + faces.json
 │   └── static/                  # Browser frontend (HTML/JS/CSS)
 │       ├── index.html
 │       ├── css/app.css
@@ -62,11 +66,11 @@ vip--video-image-processor/
 │           ├── stream.js        # WebSocket video + event client, status polling
 │           ├── controls.js      # Sidebar panels, sliders, modals, record button
 │           ├── zone_editor.js   # Zone polygon drawing + management
-│           └── notifications.js # Zone alert notification display
-├── models/                      # YOLOv8 weights (git-ignored, downloaded on first use)
+│           └── notifications.js # Alert notification display
+├── models/                      # Model weights (git-ignored, downloaded on first use)
 ├── recordings/                  # Default output directory for recordings (git-ignored)
-├── tests/
-├── architecture.md              # Full system architecture and build plan
+├── faces.json                   # Enrolled face embeddings + metadata (git-ignored)
+├── architecture.md              # Full system architecture
 ├── pyproject.toml
 └── .env
 ```
@@ -91,7 +95,7 @@ python -m uv sync
 
 ### Configure
 
-Edit `.env` (or create one) with your settings:
+Copy `.env.example` to `.env` and edit as needed:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -101,15 +105,19 @@ Edit `.env` (or create one) with your settings:
 | `ENABLE_MOTION` | `false` | Motion tracking overlay |
 | `ENABLE_ZONES` | `false` | Detection zone recording trigger |
 | `ENABLE_DETECTION` | `false` | YOLOv8 object detection |
+| `ENABLE_FACES` | `false` | Face recognition |
 | `YOLO_MODEL` | `yolov8n.pt` | Model weights file (downloaded on first use) |
 | `YOLO_CONFIDENCE` | `0.4` | Minimum detection confidence (0.05–0.95) |
 | `YOLO_SKIP_FRAMES` | `3` | Run inference every N frames |
 | `DETECT_CLASSES` | `` | Comma-separated class filter, empty = all COCO classes |
+| `FACE_MODEL` | `Facenet512` | Recognition model (`Facenet512` or `ArcFace`) |
+| `FACE_SIMILARITY_THRESHOLD` | `0.4` | Cosine similarity required to identify a face |
+| `FACE_SKIP_FRAMES` | `3` | Run recognition every N frames |
 | `RECORDING_OUTPUT_DIR` | `recordings` | Directory where recordings and screenshots are saved |
 | `RECORDING_PROJECT_NAME` | `vip` | Project name used in filename patterns |
-| `RECORDING_FILENAME_PATTERN` | `{project_name}_{current_timestamp}` | Filename template (see Recording section) |
+| `RECORDING_FILENAME_PATTERN` | `{project_name}_{current_timestamp}` | Filename template |
 | `ZONE_STOP_MODE` | `zone` | When to stop zone-triggered recording: `zone` or `stream` |
-| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG` for zone/motion diagnostics) |
+| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG` for diagnostics) |
 
 ### Run
 
@@ -185,8 +193,6 @@ To delete a zone, click the **×** button next to its name in the sidebar list. 
 
 Select the mode using the radio buttons in the Detection Zones panel. The setting takes effect immediately without restart.
 
-When a zone triggers recording, the record button in the header lights up automatically. The recording is saved to the configured output directory using the same filename pattern as manual recordings.
-
 ---
 
 ## Recording
@@ -197,7 +203,7 @@ Click the **record button** (red dot) in the top-right header area to start reco
 
 ### Screenshot
 
-Click the **camera icon** button next to the record button to save a single annotated frame as a JPEG. A brief green flash confirms the capture. The file is saved to the same directory as recordings, with `_screenshot` appended to the filename.
+Click the **camera icon** button next to the record button to save a single annotated frame as a JPEG. A brief green flash confirms the capture.
 
 ### Output path
 
@@ -206,12 +212,16 @@ Recordings and screenshots are saved to the directory configured in **General Se
 | Variable | Example output |
 |---|---|
 | `{project_name}` | `vip` |
-| `{current_date}` | `2026-04-21` |
-| `{current_timestamp}` | `2026-04-21_14-31-42` |
+| `{current_date}` | `2026-04-22` |
+| `{current_timestamp}` | `2026-04-22_14-31-42` |
 
-Example pattern: `{project_name}_{current_timestamp}` → `vip_2026-04-21_14-31-42.mp4`
+Example pattern: `{project_name}_{current_timestamp}` → `vip_2026-04-22_14-31-42.mp4`
 
-Screenshots follow the same pattern with `_screenshot.jpg` appended.
+| File type | Suffix |
+|---|---|
+| Video recording | `.mp4` |
+| Manual screenshot | `_screenshot.jpg` |
+| Auto-enroll capture | `_autoenroll.jpg` |
 
 ---
 
@@ -219,7 +229,7 @@ Screenshots follow the same pattern with `_screenshot.jpg` appended.
 
 Enable the **Object Detection** toggle in the sidebar to activate YOLOv8 inference on each frame. Detected objects are drawn as bounding boxes with a class label and confidence score. Each class is assigned a consistent color across frames.
 
-> The model weights are downloaded automatically on first use and cached in the `models/` directory. The first inference after enabling may take a few seconds while the model loads.
+> The model weights are downloaded automatically on first use and cached in the `models/` directory. The first inference after enabling may take a few seconds while the model loads — a spinner is shown in the sidebar during this time.
 
 ### Sidebar controls
 
@@ -252,14 +262,7 @@ remote, keyboard, cell phone, microwave, oven, toaster, sink,
 refrigerator, book, clock, vase, scissors, teddy bear, hair drier, toothbrush
 ```
 
-Example — detect only people and vehicles:
-```
-person, car, truck, motorcycle, bicycle, bus
-```
-
 #### Option 2 — Swap the pre-trained model
-
-Different YOLOv8 variants trade speed for accuracy. Change the **Model** dropdown in the sidebar or set `yolo_model` via the API:
 
 | Model | Size | Speed | Use case |
 |---|---|---|---|
@@ -269,26 +272,14 @@ Different YOLOv8 variants trade speed for accuracy. Change the **Model** dropdow
 | `yolov8l.pt` | 87 MB | Slower | High accuracy |
 | `yolov8x.pt` | 136 MB | Slowest | Maximum accuracy |
 
-Ultralytics also publishes task-specific variants if you need segmentation masks (`yolov8n-seg.pt`), pose keypoints (`yolov8n-pose.pt`), or oriented bounding boxes (`yolov8n-obb.pt`).
-
 #### Option 3 — Train on your own classes
-
-If you need to detect objects that are not in COCO (e.g. specific products, animals, or equipment), you can fine-tune a YOLOv8 model on your own labelled dataset.
-
-**Step 1 — Collect and label images**
-
-[Roboflow](https://roboflow.com) is the easiest way to annotate images and export in YOLO format. Their free tier supports small projects. Alternatively use [Label Studio](https://labelstud.io/) (open-source, self-hosted).
-
-**Step 2 — Train the model**
 
 ```python
 from ultralytics import YOLO
 
-# Start from a pre-trained checkpoint (transfer learning)
 model = YOLO("yolov8n.pt")
-
 model.train(
-    data="path/to/dataset.yaml",   # Roboflow exports this file for you
+    data="path/to/dataset.yaml",
     epochs=50,
     imgsz=640,
     project="models",
@@ -296,17 +287,68 @@ model.train(
 )
 ```
 
-Training produces a `best.pt` weight file in `models/my-custom-model/weights/`.
-
-**Step 3 — Use your custom model**
-
-Copy or symlink `best.pt` into the `models/` directory, then set the model in the sidebar or `.env`:
-
+Set the resulting weights in `.env` or the sidebar:
 ```
 YOLO_MODEL=models/my-custom-model/weights/best.pt
 ```
 
-The class labels are embedded in the `.pt` file — no additional configuration needed. The sidebar class filter works with your custom class names too.
+---
+
+## Face Recognition
+
+Enable the **Face Recognition** toggle in the sidebar to activate face detection and identification on each frame. Known faces are drawn with a green bounding box and their name + similarity score. Unknown faces are shown with a grey bounding box.
+
+> The model weights are downloaded automatically on first use (~100 MB, stored in `~/.deepface/weights`). A spinner is shown in the sidebar while loading.
+
+### Sidebar controls
+
+| Control | Description |
+|---|---|
+| Toggle switch | Enable / disable face recognition without restarting |
+| Match threshold | Minimum cosine similarity to accept a match — higher = stricter |
+| Run every | Frames between recognition calls — higher = faster stream |
+| Show landmarks | Overlay 5-point facial landmark mesh (eyes, nose, mouth corners) with connecting lines |
+| Auto-enroll unknown faces | Automatically enroll unknown faces that meet the quality threshold |
+| Min quality | Minimum detection confidence to trigger auto-enrollment (50–100 %) |
+
+### Enrolling faces manually
+
+1. Make sure Face Recognition is enabled and the model has finished loading.
+2. Position your face clearly in front of the camera.
+3. Click **Enroll face…** and enter a name.
+4. The embedding is saved immediately to `faces.json` and the face is active on the next frame.
+
+### Auto-enrollment
+
+When **Auto-enroll unknown faces** is enabled, any unknown face detected with a confidence score above the **Min quality** threshold is enrolled automatically. A timestamped name is generated (`face_20260422_143142`) and a screenshot of the frame is saved to the recordings directory with a `_autoenroll.jpg` suffix.
+
+A green notification appears in the sidebar and the enrolled faces list refreshes automatically.
+
+### Managing enrolled faces
+
+Each entry in the sidebar face list shows the name and enrollment timestamp.
+
+| Action | How |
+|---|---|
+| Rename | Click the ✎ icon, enter a new name in the prompt |
+| Delete | Click the × button |
+
+Renaming and deletion update both the in-memory store and `faces.json` immediately.
+
+### Landmark overlay
+
+When **Show landmarks** is enabled, five facial key points are drawn on each detected face: left eye, right eye, nose tip, left mouth corner, and right mouth corner, connected by lines. The overlay uses the same color as the bounding box (green for known, grey for unknown).
+
+Eye positions are taken from the detector when available; otherwise they are estimated from standard facial geometry ratios applied to the bounding box.
+
+### Models
+
+| Model | Accuracy (LFW) | Notes |
+|---|---|---|
+| `Facenet512` | ~99.6 % | Default — fast and accurate |
+| `ArcFace` | ~99.8 % | Best accuracy, slightly slower |
+
+Change the model via `.env` (`FACE_MODEL=ArcFace`). The model reloads automatically when the setting changes.
 
 ---
 
@@ -332,9 +374,25 @@ Live stats (connection status, actual FPS, client count) are shown read-only in 
 |---|---|
 | `GET /` | Browser UI |
 | `WS /ws/video` | Binary JPEG frame stream |
-| `WS /ws/events` | JSON event stream (`recording_started`, `recording_stopped`) |
+| `WS /ws/events` | JSON event stream |
 | `GET /stream.mjpeg` | MJPEG fallback stream |
 | `GET /api/status` | Stream health, actual FPS, client count |
+
+### WebSocket events
+
+| Type | Fields | Trigger |
+|---|---|---|
+| `recording_started` | `path` | Recording begins |
+| `recording_stopped` | `saved_to` | Recording ends and file is written |
+| `zone_alert` | `zone_id`, `zone_name` | Motion centroid enters a zone |
+| `model_loading` | `model` | YOLO model load begins |
+| `model_ready` | `model` | YOLO model is ready |
+| `model_error` | `model`, `error` | YOLO model failed to load |
+| `face_model_loading` | `model` | Face model load begins |
+| `face_model_ready` | `model` | Face model is ready |
+| `face_model_error` | `model`, `error` | Face model failed to load |
+| `face_recognized` | `name`, `similarity` | Known face detected (10 s cooldown) |
+| `face_enrolled` | `name`, `created_at` | Face auto-enrolled |
 
 ### Configuration
 
@@ -342,56 +400,51 @@ Live stats (connection status, actual FPS, client count) are shown read-only in 
 # Get current config
 curl http://localhost:8000/api/config
 
-# Change stream source
+# Enable face recognition with strict threshold
 curl -X PUT http://localhost:8000/api/config \
   -H "Content-Type: application/json" \
-  -d '{"stream_url": "rtsp://192.168.1.10:8554/cam"}'
+  -d '{"enable_faces": true, "face_similarity_threshold": 0.6}'
 
-# Enable motion tracking and tune sensitivity
+# Enable auto-enrollment
 curl -X PUT http://localhost:8000/api/config \
   -H "Content-Type: application/json" \
-  -d '{"enable_motion": true, "motion_mog2_threshold": 80, "motion_min_area": 1000}'
-
-# Enable zones and set stop mode
-curl -X PUT http://localhost:8000/api/config \
-  -H "Content-Type: application/json" \
-  -d '{"enable_zones": true, "zone_stop_mode": "stream"}'
+  -d '{"face_auto_enroll": true, "face_auto_enroll_min_score": 0.9}'
 ```
 
-Full list of configurable fields:
+Full list of configurable fields (in addition to motion/zone/detection fields):
 
 | Field | Type | Description |
 |---|---|---|
-| `stream_url` | string | Stream source — `"0"` for webcam or RTSP/MJPEG URL |
-| `target_fps` | int | Pipeline frame rate (1–60) |
-| `jpeg_quality` | int | JPEG encoding quality (1–100) |
-| `enable_motion` | bool | Motion tracking on/off |
-| `enable_zones` | bool | Detection zones on/off |
-| `zone_stop_mode` | string | `"zone"` or `"stream"` |
-| `motion_mog2_threshold` | int | MOG2 sensitivity (1–500) |
-| `motion_min_area` | int | Minimum contour area in px² |
-| `motion_dilate_kernel` | int | Dilation kernel size — controls blob merging (1–51) |
-| `motion_trail_length` | int | Trail history length (1–60 frames) |
-| `motion_trail_enabled` | bool | Show/hide fading trail |
-| `motion_trail_color` | string | Trail color (`#rrggbb`) |
-| `motion_trail_max_radius` | int | Trail dot max radius in px |
-| `motion_contour_enabled` | bool | Show/hide object outline |
-| `motion_contour_color` | string | Contour color (`#rrggbb`) |
-| `motion_contour_thickness` | int | Contour stroke thickness in px |
-| `motion_arrow_enabled` | bool | Show/hide direction arrow |
-| `motion_arrow_color` | string | Arrow color (`#rrggbb`) |
-| `motion_arrow_thickness` | int | Arrow stroke thickness in px |
-| `motion_center_enabled` | bool | Show/hide center dot |
-| `motion_center_color` | string | Center dot color (`#rrggbb`) |
-| `motion_center_radius` | int | Center dot radius in px |
-| `enable_detection` | bool | YOLOv8 object detection on/off |
-| `yolo_model` | string | Model weights file, e.g. `yolov8n.pt` or a custom `.pt` path |
-| `yolo_confidence` | float | Minimum detection confidence (0.05–0.95) |
-| `yolo_skip_frames` | int | Run inference every N frames (1–10) |
-| `detect_classes` | string | Comma-separated class filter, empty = all classes |
-| `recording_output_dir` | string | Output directory for recordings |
-| `recording_project_name` | string | Project name token in filename patterns |
-| `recording_filename_pattern` | string | Filename pattern (see Recording section) |
+| `enable_faces` | bool | Face recognition on/off |
+| `face_model` | string | `Facenet512` or `ArcFace` |
+| `face_similarity_threshold` | float | Cosine similarity threshold (0.1–0.9) |
+| `face_skip_frames` | int | Run recognition every N frames (1–10) |
+| `face_show_landmarks` | bool | Landmark overlay on/off |
+| `face_auto_enroll` | bool | Auto-enrollment mode on/off |
+| `face_auto_enroll_min_score` | float | Minimum det_score to trigger auto-enroll (0.5–1.0) |
+
+### Faces
+
+```bash
+# List enrolled faces
+curl http://localhost:8000/api/faces
+
+# Enroll a face from the current frame
+curl -X POST http://localhost:8000/api/faces/enroll \
+  -H "Content-Type: application/json" \
+  -d '{"name": "John"}'
+
+# Rename an enrolled face
+curl -X PATCH http://localhost:8000/api/faces/John \
+  -H "Content-Type: application/json" \
+  -d '{"new_name": "John Smith"}'
+
+# Delete a face
+curl -X DELETE http://localhost:8000/api/faces/John
+
+# Clear all faces
+curl -X DELETE http://localhost:8000/api/faces
+```
 
 ### Zones
 
@@ -414,16 +467,14 @@ curl -X DELETE http://localhost:8000/api/zones
 ### Recording
 
 ```bash
-# Start recording manually
+# Start / stop recording
 curl -X POST http://localhost:8000/api/recording/start
-
-# Stop recording
 curl -X POST http://localhost:8000/api/recording/stop
 
 # Take a screenshot
 curl -X POST http://localhost:8000/api/recording/screenshot
 
-# Check recording status
+# Check status
 curl http://localhost:8000/api/recording/status
 ```
 
@@ -450,7 +501,7 @@ STREAM_URL=rtsp://<raspberry-pi-ip>:8554/cam
 
 ## Architecture
 
-See [`architecture.md`](architecture.md) for the full system design, data flow, processor chain interface, and build phase breakdown.
+See [`architecture.md`](architecture.md) for the full system design, data flow, and processor chain details.
 
 ---
 

@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     yolo_skip_frames: int = 3
     detect_classes: str = ""  # comma-separated, empty = all
 
+    # Face recognition
+    enable_faces: bool = False
+    face_model: str = "Facenet512"          # Facenet512 (fast) or ArcFace (most accurate)
+    face_similarity_threshold: float = 0.4  # cosine similarity — higher = stricter
+    face_skip_frames: int = 3
+    face_store_path: str = "faces.json"     # persisted reference embeddings
+    face_show_landmarks: bool = True        # overlay eye/nose/mouth points and lines
+    face_auto_enroll: bool = False          # auto-enroll unknown faces above quality threshold
+    face_auto_enroll_min_score: float = 0.85  # minimum det_score to trigger auto-enroll
+
     # SMTP notifications (all optional)
     smtp_host: str = ""
     smtp_port: int = 587

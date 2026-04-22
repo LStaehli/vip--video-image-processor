@@ -459,7 +459,8 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
   font-size: 0.75rem;
   color: var(--muted);
 }
-.notif-item.alarm { border-color: var(--red); color: var(--red); cursor: pointer; }
+.notif-item.alarm { border-color: var(--red);   color: var(--red);   cursor: pointer; }
+.notif-item.face  { border-color: var(--green); color: var(--green); cursor: pointer; }
 .notif-item:hover { opacity: 0.75; }
 
 /* ── Zone list ── */
@@ -495,6 +496,71 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
   margin-top: 0;
 }
 .zone-delete:hover { color: var(--red); opacity: 1; }
+
+/* ── Toggle row (inline toggle + label) ── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.2rem;
+  cursor: pointer;
+}
+.toggle-label { font-size: 0.78rem; color: var(--text); }
+
+/* ── Face list items ── */
+.face-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0.3rem 0.4rem 0.3rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text);
+  gap: 0.4rem;
+  margin-top: 0.25rem;
+}
+
+.face-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.face-item-name {
+  font-size: 0.78rem;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.face-item-meta {
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.face-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.1rem;
+  flex-shrink: 0;
+}
+
+.face-rename-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  padding: 0 0.2rem;
+  margin: 0;
+  cursor: pointer;
+  align-self: auto;
+}
+.face-rename-btn:hover { color: var(--accent); opacity: 1; }
 
 /* "Cancel" state for Draw zone button */
 .btn-secondary.btn-drawing {

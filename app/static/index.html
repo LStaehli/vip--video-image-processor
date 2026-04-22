@@ -209,6 +209,71 @@
         </div>
       </section>
 
+      <!-- ── Face Recognition ── -->
+      <section class="feature-section" id="section-faces">
+        <div class="feature-header">
+          <h2>Face Recognition</h2>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-faces" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="feature-body collapsed" id="faces-body">
+
+          <div id="face-loading" class="det-loading hidden">
+            <span class="det-spinner"></span>
+            <span id="face-loading-label">Loading model…</span>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="face-similarity">Match threshold</label>
+              <span class="field-value" id="face-similarity-val"></span>
+            </div>
+            <input type="range" id="face-similarity" min="10" max="90" step="5" />
+            <div class="field-hint">Minimum cosine similarity to identify a face — higher = stricter</div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="face-skip">Run every</label>
+              <span class="field-value" id="face-skip-val"></span>
+            </div>
+            <input type="range" id="face-skip" min="1" max="10" step="1" />
+            <div class="field-hint">Frames between recognition calls</div>
+          </div>
+
+          <label class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="face-landmarks" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Show landmarks</span>
+          </label>
+
+          <label class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="face-auto-enroll" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Auto-enroll unknown faces</span>
+          </label>
+
+          <div class="field" id="face-auto-enroll-quality-field">
+            <div class="field-row">
+              <label for="face-auto-score">Min quality</label>
+              <span class="field-value" id="face-auto-score-val"></span>
+            </div>
+            <input type="range" id="face-auto-score" min="50" max="100" step="5" />
+            <div class="field-hint">Detection confidence required to auto-enroll</div>
+          </div>
+
+          <button class="btn-secondary" id="btn-enroll-face">Enroll face…</button>
+          <div id="face-list"></div>
+
+        </div>
+      </section>
+
       <!-- ── Notifications ── -->
       <section>
         <h2>Notifications</h2>

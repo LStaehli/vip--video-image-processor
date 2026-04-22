@@ -144,6 +144,154 @@ window.addEventListener('vip:event', (e) => {
   }
 });
 
+// ── Face Recognition ──────────────────────────────────────────────────────────
+
+const faceToggle      = document.getElementById('toggle-faces');
+const faceSimilarity  = document.getElementById('face-similarity');
+const faceSimilarityVal = document.getElementById('face-similarity-val');
+const faceSkip        = document.getElementById('face-skip');
+const faceSkipVal     = document.getElementById('face-skip-val');
+const faceLandmarks      = document.getElementById('face-landmarks');
+const faceAutoEnroll     = document.getElementById('face-auto-enroll');
+const faceAutoScore      = document.getElementById('face-auto-score');
+const faceAutoScoreVal   = document.getElementById('face-auto-score-val');
+const faceAutoScoreField = document.getElementById('face-auto-enroll-quality-field');
+const btnEnrollFace      = document.getElementById('btn-enroll-face');
+const faceList        = document.getElementById('face-list');
+
+faceToggle.addEventListener('change', () => {
+  patchConfig({ enable_faces: faceToggle.checked });
+});
+
+faceSimilarity.addEventListener('input', () => {
+  faceSimilarityVal.textContent = `${faceSimilarity.value}%`;
+});
+faceSimilarity.addEventListener('input', debounce(() => {
+  patchConfig({ face_similarity_threshold: parseInt(faceSimilarity.value) / 100 });
+}, DEBOUNCE_MS));
+
+faceSkip.addEventListener('input', () => {
+  faceSkipVal.textContent = `${faceSkip.value}f`;
+});
+faceSkip.addEventListener('input', debounce(() => {
+  patchConfig({ face_skip_frames: parseInt(faceSkip.value) });
+}, DEBOUNCE_MS));
+
+faceLandmarks.addEventListener('change', () => {
+  patchConfig({ face_show_landmarks: faceLandmarks.checked });
+});
+
+faceAutoEnroll.addEventListener('change', () => {
+  patchConfig({ face_auto_enroll: faceAutoEnroll.checked });
+  faceAutoScoreField.style.display = faceAutoEnroll.checked ? '' : 'none';
+});
+
+faceAutoScore.addEventListener('input', () => {
+  faceAutoScoreVal.textContent = `${faceAutoScore.value}%`;
+});
+faceAutoScore.addEventListener('input', debounce(() => {
+  patchConfig({ face_auto_enroll_min_score: parseInt(faceAutoScore.value) / 100 });
+}, DEBOUNCE_MS));
+
+async function loadFaceList() {
+  try {
+    const res  = await fetch('/api/faces');
+    const data = await res.json();
+    renderFaceList(data.faces ?? []);
+  } catch (e) {
+    console.warn('Failed to load face list', e);
+  }
+}
+
+function renderFaceList(faces) {
+  faceList.innerHTML = '';
+  faces.forEach(({ name, created_at }) => {
+    const item = document.createElement('div');
+    item.className = 'face-item';
+
+    const date = created_at
+      ? new Date(created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+      : '';
+
+    item.innerHTML = `
+      <div class="face-item-info">
+        <span class="face-item-name">${name}</span>
+        <span class="face-item-meta">${date}</span>
+      </div>
+      <div class="face-item-actions">
+        <button class="face-rename-btn" title="Rename">&#9998;</button>
+        <button class="zone-delete" title="Remove">&times;</button>
+      </div>`;
+
+    item.querySelector('.face-rename-btn').addEventListener('click', async () => {
+      const newName = prompt(`Rename "${name}" to:`, name);
+      if (!newName || !newName.trim() || newName.trim() === name) return;
+      const res = await fetch(`/api/faces/${encodeURIComponent(name)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ new_name: newName.trim() }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Rename failed: ${err.detail ?? 'Unknown error'}`);
+        return;
+      }
+      loadFaceList();
+    });
+
+    item.querySelector('.zone-delete').addEventListener('click', async () => {
+      await fetch(`/api/faces/${encodeURIComponent(name)}`, { method: 'DELETE' });
+      loadFaceList();
+    });
+
+    faceList.appendChild(item);
+  });
+}
+
+btnEnrollFace.addEventListener('click', async () => {
+  const name = prompt('Enter a name for this face:');
+  if (!name || !name.trim()) return;
+  try {
+    const res  = await fetch('/api/faces/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(`Enrollment failed: ${data.detail ?? 'Unknown error'}`);
+      return;
+    }
+    console.info('Enrolled face:', data.name);
+    loadFaceList();
+  } catch (e) {
+    console.warn('Enrollment request failed', e);
+  }
+});
+
+// ── Face model loading indicator ──────────────────────────────────────────────
+
+const faceLoading      = document.getElementById('face-loading');
+const faceLoadingLabel = document.getElementById('face-loading-label');
+const faceSection      = document.getElementById('section-faces');
+
+window.addEventListener('vip:event', (e) => {
+  const { type, model, name, similarity } = e.detail ?? {};
+  if (type === 'face_model_loading') {
+    faceLoadingLabel.textContent = `Loading ${model ?? 'model'}…`;
+    faceLoading.classList.remove('hidden');
+    const body = faceSection.querySelector('.feature-body');
+    if (body) body.classList.remove('collapsed');
+  } else if (type === 'face_model_ready' || type === 'face_model_error') {
+    faceLoading.classList.add('hidden');
+  } else if (type === 'face_recognized') {
+    console.info(`Face recognised: ${name} (${Math.round((similarity ?? 0) * 100)}%)`);
+  } else if (type === 'face_enrolled') {
+    // Auto-enrolled — refresh the list so the new entry appears immediately
+    loadFaceList();
+  }
+});
+
 // ── Populate UI from server config on load ────────────────────────────────────
 
 async function loadConfig() {
@@ -180,12 +328,35 @@ async function loadConfig() {
     }
     if (data.detect_classes !== undefined) detClasses.value = data.detect_classes;
 
+    // Face recognition
+    faceToggle.checked = data.enable_faces ?? false;
+    if (data.face_similarity_threshold !== undefined) {
+      faceSimilarity.value = Math.round(data.face_similarity_threshold * 100);
+      faceSimilarityVal.textContent = `${faceSimilarity.value}%`;
+    }
+    if (data.face_skip_frames !== undefined) {
+      faceSkip.value = data.face_skip_frames;
+      faceSkipVal.textContent = `${data.face_skip_frames}f`;
+    }
+    if (data.face_show_landmarks !== undefined) {
+      faceLandmarks.checked = data.face_show_landmarks;
+    }
+    if (data.face_auto_enroll !== undefined) {
+      faceAutoEnroll.checked = data.face_auto_enroll;
+      faceAutoScoreField.style.display = data.face_auto_enroll ? '' : 'none';
+    }
+    if (data.face_auto_enroll_min_score !== undefined) {
+      faceAutoScore.value = Math.round(data.face_auto_enroll_min_score * 100);
+      faceAutoScoreVal.textContent = `${faceAutoScore.value}%`;
+    }
+
   } catch (e) {
     console.warn('failed to load config', e);
   }
 }
 
 loadConfig();
+loadFaceList();
 
 
 // ── Visual Settings Modal ─────────────────────────────────────────────────────

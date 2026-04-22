@@ -177,13 +177,15 @@ cython_debug/
 .idea/
 
 # VIP — project-specific ignores
-# Downloaded YOLO weights
+# Downloaded model weights (YOLO, InsightFace)
 models/
 # Stray .pt files at repo root
 /*.pt
 *.db
 .env
 recordings/
+# Enrolled face references (contains biometric data)
+faces.json
 
 # Abstra
 # Abstra is an AI-powered process automation framework.
