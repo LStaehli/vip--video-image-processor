@@ -96,6 +96,14 @@ async def lifespan(app: FastAPI):
     zone_proc._recorder = recorder   # zone processor starts/stops recording autonomously
     face_proc._recorder = recorder   # face processor saves auto-enroll screenshots
 
+    from app.services import notifications as notifier
+    zone_proc._notifier = notifier
+    logger.info(
+        "Notifications: telegram=%s email=%s",
+        bool(settings.telegram_bot_token),
+        bool(settings.smtp_host and settings.notify_email),
+    )
+
     from app.api import recording as recording_api
     recording_api.init(recorder=recorder, pipeline=pipeline)
 

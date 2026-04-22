@@ -83,6 +83,7 @@ class ZoneProcessor(BaseProcessor):
         self.enabled = False
         self._ws = ws_manager
         self._recorder = None             # injected by main.py
+        self._notifier = None             # injected by main.py
         self._zone_recording = False      # True when this processor started recording
         self._inactive_since: float | None = None
         self._active_zones: set[str] = set()  # zone IDs currently being hit (for edge detection)
@@ -168,10 +169,15 @@ class ZoneProcessor(BaseProcessor):
                 except RuntimeError as exc:
                     logger.warning("Could not start zone recording: %s", exc)
 
-            # Log a DB event for every zone that fired this frame (edge trigger)
+            # Log DB event and send notifications for each newly-hit zone
             recording_id = self._recorder.recording_id if self._recorder else None
+            recording_path = self._recorder.current_file if self._recorder else None
             for zone in newly_hit:
                 asyncio.ensure_future(db.log_zone_event(zone.id, zone.name, recording_id))
+                if self._notifier and settings.notify_on_zone_trigger:
+                    asyncio.ensure_future(
+                        self._notifier.notify_zone_trigger(zone.id, zone.name, recording_path)
+                    )
 
         elif self._zone_recording and self._recorder.is_recording:
             if activity:

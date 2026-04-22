@@ -505,6 +505,51 @@ STREAM_URL=rtsp://<raspberry-pi-ip>:8554/cam
 
 ---
 
+# Notification system
+
+## Telegram
+
+### Setup for a Telegram channel                                                                                       
+                                                                                                                                                                                                                                                    
+#### Step 1 — Create a bot and get the token                                                                                                                                                                                                           
+                                                                                                                                                                                                                                                    
+1. Open Telegram and search for @BotFather                                                                                                                                                                                                        
+2. Send /newbot                                                                                                                                                                                                                                   
+3. Choose a name (e.g. VIP Monitor) and a username (must end in bot, e.g. vip_monitor_bot)                                                                                                                                                      
+4. BotFather replies with your token — looks like: 7123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                                                                                                                                 
+                                                                                                                                                                                                                                                    
+→ This is your TELEGRAM_BOT_TOKEN                                                                                                                                                                                                                 
+                                                                                                                                                                                                                                                
+---                                                                                                                                                                                                                                               
+#### Step 2 — Add the bot to your channel                                                                                                                                                                                                            
+                                      
+1. Open your channel → Edit → Administrators
+2. Add your bot as an administrator (it needs permission to Post Messages)                                                                                                                                                                        
+                                                                                                                                                                                                                                                    
+---                                                                                                                                                                                                                                               
+#### Step 3 — Get the channel chat ID                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                              
+Channel IDs are not visible in the UI. Easiest way:
+                                                                                                                                                                                                                                                    
+1. Send any message to your channel                                                                                                                                                                                                               
+2. Open this URL in your browser (replace YOUR_TOKEN):                                                                                                                                                                                            
+https://api.telegram.org/botYOUR_TOKEN/getUpdates                                                                                                                                                                                                 
+3. Look for "chat" → "id" in the JSON response. For a public channel it looks like @your_channel_name. For a private channel it's a negative number like -1001234567890.                                                                          
+                                                                                                                                                                                                                                                    
+→ This is your TELEGRAM_CHAT_ID                                                                                                                                                                                                                   
+                                                                                                                                                                                                                                                
+▎ If getUpdates returns an empty array: the bot hasn't received any messages yet. Forward a message from the channel to the bot directly, then try the URL again. Alternatively, use @userinfobot — forward a message from your channel to it and 
+it will reply with the channel's ID.
+                                                                                                                                                                                                                                                
+---                                                                                                                                                                                                                                             
+Step 4 — Add to your .env
+                                                                                                                                                                                                                                                
+TELEGRAM_BOT_TOKEN=7123456789:AAFxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TELEGRAM_CHAT_ID=-1001234567890                                                                                                                                                                                                                   
+                                                                  
+
+---
+
 ## Architecture
 
 See [`architecture.md`](architecture.md) for the full system design, data flow, and processor chain details.

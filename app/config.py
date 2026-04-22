@@ -59,12 +59,20 @@ class Settings(BaseSettings):
     face_auto_enroll: bool = False          # auto-enroll unknown faces above quality threshold
     face_auto_enroll_min_score: float = 0.85  # minimum det_score to trigger auto-enroll
 
-    # SMTP notifications (all optional)
+    # Notifications — all fields optional; unconfigured channels are silently skipped
+    notify_on_zone_trigger: bool = True
+    notify_cooldown: int = 60   # seconds between repeated alerts for the same zone
+
+    # Telegram (optional)
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+
+    # Email / SMTP (optional)
     smtp_host: str = ""
-    smtp_port: int = 587
+    smtp_port: int = 587        # 587 = STARTTLS, 465 = implicit TLS
     smtp_user: str = ""
     smtp_password: str = ""
-    smtp_from: str = ""
+    smtp_from: str = ""         # defaults to smtp_user if empty
     notify_email: str = ""
 
     # Recording
