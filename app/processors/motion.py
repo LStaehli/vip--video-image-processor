@@ -15,7 +15,6 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from app.config import settings
 from app.processors.base import BaseProcessor, FrameState
 
 # ── Tuneable constants ────────────────────────────────────────────────────────
@@ -62,17 +61,16 @@ class MotionProcessor(BaseProcessor):
 
     def __init__(self) -> None:
         self.enabled = True
+        self._cfg = None   # injected by registry after construction
         self._subtractor = cv2.createBackgroundSubtractorMOG2(
             history=_MOG2_HISTORY,
-            varThreshold=settings.motion_mog2_threshold,
+            varThreshold=_MOG2_VAR_THRESHOLD,
             detectShadows=False,
         )
-        # Morphology kernels
-        self._kernel_open  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        self._dilate_size  = settings.motion_dilate_kernel
-        self._kernel_dilate = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (self._dilate_size, self._dilate_size)
-        )
+        # Morphology kernels — rebuilt at runtime if dilate_kernel changes
+        self._kernel_open   = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        self._dilate_size   = None
+        self._kernel_dilate = None
 
         self._tracks: dict[int, _Track] = {}
         self._next_id = 0
@@ -99,9 +97,8 @@ class MotionProcessor(BaseProcessor):
 
     def _build_mask(self, frame: np.ndarray) -> np.ndarray:
         # Rebuild dilation kernel if the setting changed at runtime
-        current_size = settings.motion_dilate_kernel
+        current_size = self._cfg.motion_dilate_kernel if self._cfg else 50
         if current_size != self._dilate_size:
-            # Ensure kernel size is odd (OpenCV requirement)
             size = current_size if current_size % 2 == 1 else current_size + 1
             self._kernel_dilate = cv2.getStructuringElement(
                 cv2.MORPH_ELLIPSE, (size, size)
@@ -116,7 +113,8 @@ class MotionProcessor(BaseProcessor):
 
     def _find_contours(self, mask: np.ndarray) -> list[np.ndarray]:
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        return [c for c in contours if cv2.contourArea(c) >= settings.motion_min_area]
+        min_area = self._cfg.motion_min_area if self._cfg else 3500
+        return [c for c in contours if cv2.contourArea(c) >= min_area]
 
     @staticmethod
     def _centroid(contour: np.ndarray) -> tuple[int, int]:
@@ -173,19 +171,20 @@ class MotionProcessor(BaseProcessor):
             del self._tracks[tid]
 
     def _draw(self, frame: np.ndarray) -> None:
+        cfg = self._cfg
         # Read all visual settings once per frame so changes apply immediately
-        trail_enabled    = settings.motion_trail_enabled
-        trail_color      = _hex_to_bgr(settings.motion_trail_color)
-        trail_max_radius = settings.motion_trail_max_radius
-        contour_enabled  = settings.motion_contour_enabled
-        contour_color    = _hex_to_bgr(settings.motion_contour_color)
-        contour_thick    = settings.motion_contour_thickness
-        arrow_color      = _hex_to_bgr(settings.motion_arrow_color)
-        arrow_thick      = settings.motion_arrow_thickness
-        arrow_enabled    = settings.motion_arrow_enabled
-        center_color     = _hex_to_bgr(settings.motion_center_color)
-        center_radius    = settings.motion_center_radius
-        center_enabled   = settings.motion_center_enabled
+        trail_enabled    = cfg.motion_trail_enabled    if cfg else True
+        trail_color      = _hex_to_bgr(cfg.motion_trail_color    if cfg else "#80f4dd")
+        trail_max_radius = cfg.motion_trail_max_radius if cfg else 7
+        contour_enabled  = cfg.motion_contour_enabled  if cfg else False
+        contour_color    = _hex_to_bgr(cfg.motion_contour_color  if cfg else "#fffdbd")
+        contour_thick    = cfg.motion_contour_thickness if cfg else 1
+        arrow_color      = _hex_to_bgr(cfg.motion_arrow_color    if cfg else "#00c8ff")
+        arrow_thick      = cfg.motion_arrow_thickness  if cfg else 2
+        arrow_enabled    = cfg.motion_arrow_enabled    if cfg else True
+        center_color     = _hex_to_bgr(cfg.motion_center_color   if cfg else "#ffc7c7")
+        center_radius    = cfg.motion_center_radius    if cfg else 5
+        center_enabled   = cfg.motion_center_enabled   if cfg else True
 
         for track in self._tracks.values():
             if not track.history:

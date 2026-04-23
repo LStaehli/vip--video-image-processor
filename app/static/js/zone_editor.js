@@ -41,31 +41,31 @@ function zonesBase() {
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
 zonesToggle.addEventListener('change', async () => {
-  await fetch('/api/config', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ enable_zones: zonesToggle.checked }),
-  });
+  await patchConfig({ enable_zones: zonesToggle.checked });
   if (!zonesToggle.checked) cancelDrawing();
 });
 
-fetch('/api/config')
-  .then(r => r.json())
-  .then(cfg => {
+async function loadZoneConfig() {
+  const url = window.activeStreamId
+    ? `/api/streams/${window.activeStreamId}/config`
+    : null;
+  if (!url) return;
+  try {
+    const cfg = await fetch(url).then(r => r.json());
     zonesToggle.checked = cfg.enable_zones ?? false;
     const mode = cfg.zone_stop_mode ?? 'zone';
     stopRadios.forEach(r => { r.checked = (r.value === mode); });
-  })
-  .catch(e => console.warn('[zones] failed to load config', e));
+  } catch (e) {
+    console.warn('[zones] failed to load config', e);
+  }
+}
+
+window.loadZoneConfig = loadZoneConfig;
 
 // Stop mode radio buttons
 stopRadios.forEach(radio => {
   radio.addEventListener('change', () => {
-    fetch('/api/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ zone_stop_mode: radio.value }),
-    });
+    patchConfig({ zone_stop_mode: radio.value });
   });
 });
 
@@ -178,6 +178,46 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && drawingMode) cancelDrawing();
 });
 
+// ── Zone name modal (non-blocking replacement for window.prompt) ──────────────
+
+const zoneNameOverlay  = document.getElementById('zone-name-overlay');
+const zoneNameInput    = document.getElementById('zone-name-input');
+const btnZoneNameOk    = document.getElementById('btn-zone-name-confirm');
+const btnZoneNameCancel = document.getElementById('btn-zone-name-cancel');
+const btnZoneNameClose = document.getElementById('btn-zone-name-close');
+
+let _resolveZoneName = null;
+
+function promptZoneName(defaultName) {
+  return new Promise((resolve) => {
+    _resolveZoneName = resolve;
+    zoneNameInput.value = defaultName;
+    zoneNameOverlay.classList.remove('hidden');
+    zoneNameInput.focus();
+    zoneNameInput.select();
+  });
+}
+
+function _confirmZoneName() {
+  const val = zoneNameInput.value.trim();
+  zoneNameOverlay.classList.add('hidden');
+  if (_resolveZoneName) { _resolveZoneName(val || null); _resolveZoneName = null; }
+}
+
+function _cancelZoneName() {
+  zoneNameOverlay.classList.add('hidden');
+  if (_resolveZoneName) { _resolveZoneName(null); _resolveZoneName = null; }
+}
+
+btnZoneNameOk.addEventListener('click', _confirmZoneName);
+btnZoneNameCancel.addEventListener('click', _cancelZoneName);
+btnZoneNameClose.addEventListener('click',  _cancelZoneName);
+zoneNameOverlay.addEventListener('click', (e) => { if (e.target === zoneNameOverlay) _cancelZoneName(); });
+zoneNameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') _confirmZoneName();
+  if (e.key === 'Escape') _cancelZoneName();
+});
+
 // ── Complete polygon ──────────────────────────────────────────────────────────
 
 async function completePoly() {
@@ -191,8 +231,8 @@ async function completePoly() {
   }
 
   const defaultName = `Zone ${savedZones.length + 1}`;
-  const name = window.prompt('Zone name:', defaultName);
-  if (!name || !name.trim()) return;
+  const name = await promptZoneName(defaultName);
+  if (!name) return;
 
   const normPoly = poly.map(({ x, y }) => normalise(x, y));
 
@@ -259,13 +299,23 @@ function renderZoneList() {
     const label = document.createElement('span');
     label.textContent = zone.name;
 
+    const actions = document.createElement('div');
+    actions.className = 'zone-item-actions';
+
+    const cfg = document.createElement('button');
+    cfg.className = 'zone-delete';
+    cfg.title     = 'Notification settings';
+    cfg.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    cfg.addEventListener('click', () => openZoneSettings(zone));
+
     const del = document.createElement('button');
     del.className   = 'zone-delete';
     del.textContent = '×';
     del.title       = 'Delete zone';
     del.addEventListener('click', () => deleteZone(zone.id));
 
-    item.append(label, del);
+    actions.append(cfg, del);
+    item.append(label, actions);
     zoneList.append(item);
   }
 }
@@ -307,8 +357,72 @@ async function loadZones() {
 // Expose globally so stream.js can call it on tab switch
 window.loadZones = loadZones;
 
+// ── Zone notification settings modal ─────────────────────────────────────────
+
+const zsOverlay    = document.getElementById('zone-settings-overlay');
+const zsZoneName   = document.getElementById('zs-zone-name');
+const zsTelegram   = document.getElementById('zs-telegram-msg');
+const zsEmail      = document.getElementById('zs-email-msg');
+const btnZsSave    = document.getElementById('btn-zone-settings-save');
+const btnZsCancel  = document.getElementById('btn-zone-settings-cancel');
+const btnZsClose   = document.getElementById('btn-zone-settings-close');
+
+let _zsCurrentZone = null;
+
+function closeZoneSettings() {
+  zsOverlay.classList.add('hidden');
+  _zsCurrentZone = null;
+}
+
+async function openZoneSettings(zone) {
+  _zsCurrentZone = zone;
+  zsZoneName.textContent = zone.name;
+  zsTelegram.value = '';
+  zsEmail.value    = '';
+
+  const base = zonesBase();
+  if (base) {
+    try {
+      const res  = await fetch(`${base}/${zone.id}/settings`);
+      const data = await res.json();
+      zsTelegram.value = data.telegram_message ?? '';
+      zsEmail.value    = data.email_message    ?? '';
+    } catch (e) {
+      console.warn('[zones] failed to load zone settings', e);
+    }
+  }
+
+  zsOverlay.classList.remove('hidden');
+  zsTelegram.focus();
+}
+
+btnZsSave.addEventListener('click', async () => {
+  if (!_zsCurrentZone) return;
+  const base = zonesBase();
+  if (!base) return;
+  try {
+    await fetch(`${base}/${_zsCurrentZone.id}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegram_message: zsTelegram.value.trim(),
+        email_message:    zsEmail.value.trim(),
+      }),
+    });
+  } catch (e) {
+    console.error('[zones] failed to save zone settings', e);
+  }
+  closeZoneSettings();
+});
+
+btnZsCancel.addEventListener('click', closeZoneSettings);
+btnZsClose.addEventListener('click',  closeZoneSettings);
+zsOverlay.addEventListener('click', (e) => { if (e.target === zsOverlay) closeZoneSettings(); });
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Zone canvas is transparent and non-interactive by default
 zoneCanvas.style.pointerEvents = 'none';
 zoneCanvas.style.cursor        = 'default';
 
-loadZones();
+// loadZones() is called by stream.js after activeStreamId is set

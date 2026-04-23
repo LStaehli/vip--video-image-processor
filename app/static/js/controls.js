@@ -10,11 +10,39 @@
 
 const DEBOUNCE_MS = 400;
 
+// ── Sidebar toggle ────────────────────────────────────────────────────────────
+
+(function () {
+  const sidebar  = document.getElementById('controls');
+  const btn      = document.getElementById('btn-toggle-sidebar');
+  const iconLine = document.getElementById('sidebar-icon').querySelector('line');
+
+  function setSidebar(collapsed) {
+    sidebar.classList.toggle('collapsed', collapsed);
+    // Flip the vertical divider line to hint open/close direction
+    iconLine.setAttribute('x1', collapsed ? '9' : '15');
+    iconLine.setAttribute('x2', collapsed ? '9' : '15');
+    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+  }
+
+  btn.addEventListener('click', () => setSidebar(!sidebar.classList.contains('collapsed')));
+
+  // Restore state across page loads
+  setSidebar(localStorage.getItem('sidebarCollapsed') === '1');
+})();
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function _streamConfigUrl() {
+  return window.activeStreamId ? `/api/streams/${window.activeStreamId}/config` : null;
+}
+
+// Per-stream feature config (motion, detection, zones, faces, fps, quality)
 async function patchConfig(body) {
+  const url = _streamConfigUrl();
+  if (!url) { console.warn('[config] no active stream'); return; }
   try {
-    await fetch('/api/config', {
+    await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
@@ -22,7 +50,19 @@ async function patchConfig(body) {
   } catch (e) {
     console.warn('config update failed', e);
   }
-  // Always resolves so callers can chain .then()
+}
+
+// Global-only config (recording paths) — still hits /api/config
+async function patchGlobalConfig(body) {
+  try {
+    await fetch('/api/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    console.warn('global config update failed', e);
+  }
 }
 
 function debounce(fn, ms) {
@@ -303,8 +343,10 @@ window.addEventListener('vip:event', (e) => {
 // ── Populate UI from server config on load ────────────────────────────────────
 
 async function loadConfig() {
+  const url = _streamConfigUrl();
+  if (!url) return;
   try {
-    const res  = await fetch('/api/config');
+    const res  = await fetch(url);
     const data = await res.json();
 
     // Motion toggle + body collapse state
@@ -368,7 +410,8 @@ async function loadConfig() {
   }
 }
 
-loadConfig();
+window.loadConfig = loadConfig;  // called by stream.js on tab switch
+// loadConfig() is called by stream.js after activeStreamId is set
 loadFaceList();
 
 
@@ -443,7 +486,8 @@ function populateModal(cfg) {
 }
 
 function openModal() {
-  fetch('/api/config')
+  const url = _streamConfigUrl() ?? '/api/config';
+  fetch(url)
     .then(r => r.json())
     .then(cfg => {
       populateModal(cfg);
@@ -496,12 +540,12 @@ const ssFps       = bindRange('ss-fps',     'ss-fps-val');
 const ssQuality   = bindRange('ss-quality', 'ss-quality-val');
 
 async function openStreamSettings() {
-  // Fetch both status (live stats for the active stream) and config in parallel
   const sid = window.activeStreamId;
-  const statusUrl = sid ? `/api/status?stream_id=${sid}` : '/api/status';
+  const statusUrl   = sid ? `/api/streams/${sid}/status` : '/api/status';
+  const configUrl   = _streamConfigUrl() ?? '/api/config';
   const [statusRes, configRes] = await Promise.all([
     fetch(statusUrl),
-    fetch('/api/config'),
+    fetch(configUrl),
   ]);
   const status = await statusRes.json();
   const config = await configRes.json();
@@ -561,6 +605,16 @@ const btnSfSave     = document.getElementById('btn-sf-save');
 
 const MAX_STREAMS = 4;
 let _editingStreamId = null;   // null = adding, number = editing
+const gsSfError = document.getElementById('gs-sf-error');
+
+function _showStreamError(msg) {
+  gsSfError.textContent = msg;
+  gsSfError.classList.remove('hidden');
+}
+function _clearStreamError() {
+  gsSfError.textContent = '';
+  gsSfError.classList.add('hidden');
+}
 
 function renderStreams(streams) {
   gsStreamList.innerHTML = '';
@@ -608,12 +662,14 @@ function closeStreamForm() {
   gsStreamForm.classList.add('hidden');
   btnAddStream.classList.remove('hidden');
   _editingStreamId = null;
+  _clearStreamError();
 }
 
 async function deleteStream(id) {
   if (!confirm('Remove this stream?')) return;
   await fetch(`/api/streams/${id}`, { method: 'DELETE' });
   await loadStreams();
+  await window.loadStreamTabs?.();
 }
 
 btnAddStream.addEventListener('click', () => openStreamForm());
@@ -625,22 +681,32 @@ btnSfSave.addEventListener('click', async () => {
   const url  = gsSfUrl.value.trim();
 
   if (!name || !url || isNaN(ch)) return;
+  _clearStreamError();
 
+  let res;
   if (_editingStreamId !== null) {
-    await fetch(`/api/streams/${_editingStreamId}`, {
+    res = await fetch(`/api/streams/${_editingStreamId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel_number: ch, name, url }),
     });
   } else {
-    await fetch('/api/streams', {
+    res = await fetch('/api/streams', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel_number: ch, name, url }),
     });
   }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    _showStreamError(err.detail ?? 'Failed to save stream.');
+    return;
+  }
+
   closeStreamForm();
   await loadStreams();
+  await window.loadStreamTabs?.();
 });
 
 // ── General Settings Modal ────────────────────────────────────────────────────
@@ -683,7 +749,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 btnGeneralApply.addEventListener('click', async () => {
-  await patchConfig({
+  await patchGlobalConfig({
     recording_output_dir:       gsOutputDir.value.trim(),
     recording_project_name:     gsProjectName.value.trim(),
     recording_filename_pattern: gsFilenamePattern.value.trim(),

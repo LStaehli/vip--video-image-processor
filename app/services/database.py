@@ -110,6 +110,19 @@ async def _create_schema() -> None:
             key   TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS zone_settings (
+            zone_id          TEXT PRIMARY KEY,
+            telegram_message TEXT NOT NULL DEFAULT '',
+            email_message    TEXT NOT NULL DEFAULT ''
+        );
+
+        CREATE TABLE IF NOT EXISTS stream_config (
+            stream_id INTEGER NOT NULL,
+            key       TEXT    NOT NULL,
+            value     TEXT    NOT NULL,
+            PRIMARY KEY (stream_id, key)
+        );
     """)
     await get_db().commit()
     await _migrate()
@@ -127,6 +140,12 @@ async def _migrate() -> None:
         )
         await db.commit()
         logger.info("Migration applied: zones.stream_id")
+
+    # streams.channel_number uniqueness — enforced via index (safe to add on existing tables)
+    await db.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_streams_channel_number ON streams(channel_number)"
+    )
+    await db.commit()
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -356,5 +375,60 @@ async def save_app_setting(key: str, value: str) -> None:
         """INSERT INTO app_settings (key, value) VALUES (?, ?)
            ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
         (key, value),
+    )
+    await db.commit()
+
+
+# ── Zone settings ─────────────────────────────────────────────────────────────
+
+async def get_zone_settings(zone_id: str) -> dict:
+    """Return notification message settings for a zone (always returns a dict)."""
+    async with get_db().execute(
+        "SELECT telegram_message, email_message FROM zone_settings WHERE zone_id = ?",
+        (zone_id,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row:
+        return {"telegram_message": row["telegram_message"], "email_message": row["email_message"]}
+    return {"telegram_message": "", "email_message": ""}
+
+
+async def upsert_zone_settings(zone_id: str, telegram_message: str, email_message: str) -> None:
+    db = get_db()
+    await db.execute(
+        """INSERT INTO zone_settings (zone_id, telegram_message, email_message)
+           VALUES (?, ?, ?)
+           ON CONFLICT(zone_id) DO UPDATE
+               SET telegram_message = excluded.telegram_message,
+                   email_message    = excluded.email_message""",
+        (zone_id, telegram_message, email_message),
+    )
+    await db.commit()
+
+
+async def delete_zone_settings(zone_id: str) -> None:
+    db = get_db()
+    await db.execute("DELETE FROM zone_settings WHERE zone_id = ?", (zone_id,))
+    await db.commit()
+
+
+# ── Stream config (per-stream key-value) ──────────────────────────────────────
+
+async def load_stream_config(stream_id: int) -> dict[str, str]:
+    """Return all stored config keys for a stream as {key: value} strings."""
+    async with get_db().execute(
+        "SELECT key, value FROM stream_config WHERE stream_id = ?", (stream_id,)
+    ) as cur:
+        rows = await cur.fetchall()
+    return {r["key"]: r["value"] for r in rows}
+
+
+async def save_stream_config(stream_id: int, data: dict[str, str]) -> None:
+    """Bulk-upsert stream config key-value pairs in a single transaction."""
+    db = get_db()
+    await db.executemany(
+        "INSERT INTO stream_config (stream_id, key, value) VALUES (?, ?, ?)"
+        " ON CONFLICT(stream_id, key) DO UPDATE SET value = excluded.value",
+        [(stream_id, k, v) for k, v in data.items()],
     )
     await db.commit()

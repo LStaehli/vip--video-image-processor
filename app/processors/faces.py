@@ -54,6 +54,7 @@ class FaceProcessor(BaseProcessor):
 
     def __init__(self) -> None:
         self.enabled = False
+        self._cfg = None                       # injected by registry
         self._model_ready = False
         self._loaded_model_name: str | None = None
         self._frame_count = 0
@@ -70,7 +71,8 @@ class FaceProcessor(BaseProcessor):
     # ── Public interface ──────────────────────────────────────────────────────
 
     def process(self, frame: np.ndarray, state: FrameState) -> np.ndarray:
-        target = settings.face_model
+        cfg = self._cfg
+        target = cfg.face_model if cfg else "Facenet512"
         need_load = not self._model_ready or self._loaded_model_name != target
         if need_load and not self._loading:
             self._trigger_load(target)
@@ -79,7 +81,7 @@ class FaceProcessor(BaseProcessor):
             return frame
 
         self._frame_count += 1
-        if self._frame_count % max(1, settings.face_skip_frames) == 0:
+        if self._frame_count % max(1, cfg.face_skip_frames if cfg else 3) == 0:
             self._cached = self._detect_and_recognise(frame)
             self._emit_events(self._cached)
 
@@ -188,7 +190,8 @@ class FaceProcessor(BaseProcessor):
             return []
 
         references = face_store.all_faces()
-        threshold = settings.face_similarity_threshold
+        cfg = self._cfg
+        threshold = cfg.face_similarity_threshold if cfg else 0.4
         results: list[FaceResult] = []
 
         for entry in raw:
@@ -216,8 +219,8 @@ class FaceProcessor(BaseProcessor):
             # Auto-enroll: unknown face with sufficient quality
             if (
                 best_name == "Unknown"
-                and settings.face_auto_enroll
-                and det_score >= settings.face_auto_enroll_min_score
+                and (cfg.face_auto_enroll if cfg else False)
+                and det_score >= (cfg.face_auto_enroll_min_score if cfg else 0.85)
                 and time.monotonic() - self._last_auto_enroll >= 3.0
             ):
                 auto_name = f"face_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
@@ -313,7 +316,7 @@ class FaceProcessor(BaseProcessor):
             )
 
             # Landmarks
-            if settings.face_show_landmarks:
+            if self._cfg.face_show_landmarks if self._cfg else True:
                 self._draw_landmarks(frame, r, color)
 
     def _draw_landmarks(

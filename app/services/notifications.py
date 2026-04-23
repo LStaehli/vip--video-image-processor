@@ -33,15 +33,21 @@ async def notify_zone_trigger(
     zone_name: str,
     recording_path: str | None = None,
     snapshot: bytes | None = None,
+    telegram_message: str = "",
+    email_message: str = "",
 ) -> None:
     """Fire Telegram + email alerts for a zone entry event.
 
     Args:
-        zone_id:        Zone UUID (used for cooldown tracking).
-        zone_name:      Human-readable zone name shown in the message.
-        recording_path: Path of the recording file that was started, if any.
-        snapshot:       JPEG-encoded bytes of the annotated frame at trigger
-                        time. Sent as a photo/attachment when provided.
+        zone_id:           Zone UUID (used for cooldown tracking).
+        zone_name:         Human-readable zone name shown in the message.
+        recording_path:    Path of the recording file that was started, if any.
+        snapshot:          JPEG-encoded bytes of the annotated frame at trigger
+                           time. Sent as a photo/attachment when provided.
+        telegram_message:  Custom message body for Telegram (already resolved).
+                           Falls back to the default when empty.
+        email_message:     Custom message body for email (already resolved).
+                           Falls back to the default when empty.
     """
     if not settings.notify_on_zone_trigger:
         return
@@ -56,10 +62,10 @@ async def notify_zone_trigger(
     tasks: list = []
 
     if settings.telegram_bot_token and settings.telegram_chat_id:
-        tasks.append(_send_telegram(zone_name, ts, recording_path, snapshot))
+        tasks.append(_send_telegram(zone_name, ts, recording_path, snapshot, telegram_message))
 
     if settings.smtp_host and settings.notify_email:
-        tasks.append(_send_email(zone_name, ts, recording_path, snapshot))
+        tasks.append(_send_email(zone_name, ts, recording_path, snapshot, email_message))
 
     if not tasks:
         logger.debug("No notification channels configured — skipping")
@@ -78,15 +84,19 @@ async def _send_telegram(
     ts: str,
     recording_path: str | None,
     snapshot: bytes | None,
+    custom_message: str = "",
 ) -> None:
-    caption_lines = [
-        "🚨 <b>Zone triggered</b>",
-        f"Zone: <b>{zone_name}</b>",
-        f"Time: {ts}",
-    ]
-    if recording_path:
-        caption_lines.append(f"Recording: <code>{recording_path}</code>")
-    caption = "\n".join(caption_lines)
+    if custom_message:
+        caption = custom_message
+    else:
+        caption_lines = [
+            "🚨 <b>Zone triggered</b>",
+            f"Zone: <b>{zone_name}</b>",
+            f"Time: {ts}",
+        ]
+        if recording_path:
+            caption_lines.append(f"Recording: <code>{recording_path}</code>")
+        caption = "\n".join(caption_lines)
 
     async with httpx.AsyncClient(timeout=15) as client:
         if snapshot:
@@ -122,22 +132,27 @@ async def _send_email(
     ts: str,
     recording_path: str | None,
     snapshot: bytes | None,
+    custom_message: str = "",
 ) -> None:
-    body_lines = [
-        f"Zone triggered: {zone_name}",
-        f"Time: {ts}",
-    ]
-    if recording_path:
-        body_lines.append(f"Recording saved to: {recording_path}")
+    if custom_message:
+        body_text = custom_message
+    else:
+        body_lines = [
+            f"Zone triggered: {zone_name}",
+            f"Time: {ts}",
+        ]
+        if recording_path:
+            body_lines.append(f"Recording saved to: {recording_path}")
+        body_text = "\n".join(body_lines)
 
     if snapshot:
         msg: MIMEMultipart | MIMEText = MIMEMultipart()
-        msg.attach(MIMEText("\n".join(body_lines)))
+        msg.attach(MIMEText(body_text))
         img = MIMEImage(snapshot, _subtype="jpeg")
         img.add_header("Content-Disposition", "attachment", filename="snapshot.jpg")
         msg.attach(img)
     else:
-        msg = MIMEText("\n".join(body_lines))
+        msg = MIMEText(body_text)
 
     msg["From"] = settings.smtp_from or settings.smtp_user
     msg["To"] = settings.notify_email

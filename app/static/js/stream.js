@@ -23,6 +23,7 @@ const streamTabs  = document.getElementById('stream-tabs');
 
 let activeStreamId = null;
 window.activeStreamId = null;  // exposed for controls.js recording calls
+let _loadedStreams = [];        // kept in sync by loadStreamTabs for URL resolution
 
 // ── Video WebSocket ──────────────────────────────────────────────────────────
 
@@ -123,6 +124,12 @@ function switchStream(streamId) {
   activeStreamId = streamId;
   window.activeStreamId = streamId;
 
+  // Reflect active channel in the URL without triggering a reload
+  const stream = _loadedStreams.find(s => s.id === streamId);
+  if (stream) {
+    history.replaceState(null, '', `?channel=${stream.channel_number}`);
+  }
+
   // Update tab active state
   streamTabs.querySelectorAll('.stream-tab').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.streamId == streamId);
@@ -136,8 +143,10 @@ function switchStream(streamId) {
   connectEvents();
   pollStatus();
 
-  // Reload zones for the new stream (zone_editor.js exposes this globally)
-  window.loadZones?.();
+  // Reload per-stream data
+  window.loadConfig?.();      // sidebar controls (motion, detection, faces…)
+  window.loadZoneConfig?.();  // zone toggle + stop-mode radios
+  window.loadZones?.();       // zone list in sidebar
 }
 
 function renderStreamTabs(streams) {
@@ -168,11 +177,17 @@ async function loadStreamTabs() {
     const data = await res.json();
     // Only show streams that are enabled (have an active pipeline)
     const running = (data.streams ?? []).filter(s => s.enabled !== false);
+    _loadedStreams = running;
 
-    // Pick first running stream if none selected yet
+    // On first load, honour ?channel=N from the URL; fall back to first stream
     if (!activeStreamId && running.length > 0) {
-      activeStreamId = running[0].id;
-      window.activeStreamId = activeStreamId;
+      const urlChannel = parseInt(new URLSearchParams(location.search).get('channel'));
+      const preferred  = urlChannel ? running.find(s => s.channel_number === urlChannel) : null;
+      const initial    = preferred ?? running[0];
+      activeStreamId        = initial.id;
+      window.activeStreamId = initial.id;
+      // Normalise the URL in case the param was absent or pointed to a missing channel
+      history.replaceState(null, '', `?channel=${initial.channel_number}`);
     }
 
     renderStreamTabs(running);
@@ -185,9 +200,14 @@ document.getElementById('btn-reconnect').addEventListener('click', () => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
+window.loadStreamTabs = loadStreamTabs;
+
 loadStreamTabs().then(() => {
   connectVideo();
   connectEvents();
   setInterval(pollStatus, 2000);
   pollStatus();
+  window.loadConfig?.();
+  window.loadZoneConfig?.();
+  window.loadZones?.();
 });

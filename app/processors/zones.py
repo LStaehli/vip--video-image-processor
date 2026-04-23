@@ -16,9 +16,11 @@ On every frame:
 """
 import asyncio
 import logging
+import re
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import datetime
 
 import cv2
 import numpy as np
@@ -35,6 +37,25 @@ _COLOR_FILL    = (0, 149, 255)  # orange (BGR)
 _COLOR_OUTLINE = (0, 149, 255)
 _COLOR_LABEL   = (255, 255, 255)
 _COLOR_HIT     = (0, 0, 220)    # red when triggered
+
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _slugify(text: str) -> str:
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_]+", "-", text)
+    return re.sub(r"-{2,}", "-", text) or "channel"
+
+
+def _resolve_message(template: str, zone_name: str, channel_number: int, channel_slug: str) -> str:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return (template
+        .replace("{zone_name}",        zone_name)
+        .replace("{channel_number}",   str(channel_number))
+        .replace("{channel_slug}",     channel_slug)
+        .replace("{current_timestamp}", ts)
+    )
 
 
 # ── Zone model ────────────────────────────────────────────────────────────────
@@ -58,8 +79,11 @@ class ZoneProcessor(BaseProcessor):
         self._zone_recording = False      # True when this processor started recording
         self._inactive_since: float | None = None
         self._active_zones: set[str] = set()  # zone IDs currently being hit (edge detection)
+        self._cfg = None                       # injected by registry
         self._zones: dict[str, Zone] = {}     # per-stream zone store
         self._stream_id: int | None = None    # set by registry
+        self._channel_number: int = 1         # set by registry
+        self._channel_slug: str = "channel"   # set by registry
 
     # ── Zone CRUD (instance-scoped, stream-aware) ─────────────────────────────
 
@@ -97,7 +121,7 @@ class ZoneProcessor(BaseProcessor):
 
         h, w = frame.shape[:2]
         overlay = frame.copy()
-        stop_mode = settings.zone_stop_mode
+        stop_mode = self._cfg.zone_stop_mode if self._cfg else "zone"
 
         logger.debug(
             "ZoneProcessor: %d zone(s), %d centroid(s), stop_mode=%s",
@@ -184,18 +208,17 @@ class ZoneProcessor(BaseProcessor):
                     logger.warning("Zone trigger screenshot failed: %s", exc)
 
             # Encode snapshot for notifications only when notifications are enabled
+            notify = self._cfg.notify_on_zone_trigger if self._cfg else False
             snapshot: bytes | None = None
-            if self._notifier and settings.notify_on_zone_trigger:
+            if self._notifier and notify:
                 ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 snapshot = buf.tobytes() if ok else None
 
             for zone in newly_hit:
                 asyncio.ensure_future(db.log_zone_event(zone.id, zone.name, recording_id))
-                if self._notifier and settings.notify_on_zone_trigger:
+                if self._notifier and notify:
                     asyncio.ensure_future(
-                        self._notifier.notify_zone_trigger(
-                            zone.id, zone.name, recording_path, snapshot
-                        )
+                        self._notify_zone(zone, recording_path, snapshot)
                     )
 
         elif self._zone_recording and self._recorder.is_recording:
@@ -225,6 +248,21 @@ class ZoneProcessor(BaseProcessor):
                         self._inactive_since = None
 
         return frame
+
+    async def _notify_zone(self, zone: "Zone", recording_path: str | None, snapshot: bytes | None) -> None:
+        """Load per-zone custom messages from DB, resolve template variables, then send."""
+        zone_cfg = await db.get_zone_settings(zone.id)
+        tg_msg = zone_cfg.get("telegram_message", "")
+        em_msg = zone_cfg.get("email_message", "")
+        if tg_msg:
+            tg_msg = _resolve_message(tg_msg, zone.name, self._channel_number, self._channel_slug)
+        if em_msg:
+            em_msg = _resolve_message(em_msg, zone.name, self._channel_number, self._channel_slug)
+        await self._notifier.notify_zone_trigger(
+            zone.id, zone.name, recording_path, snapshot,
+            telegram_message=tg_msg,
+            email_message=em_msg,
+        )
 
 
 def _denorm(polygon: list[list[float]], w: int, h: int) -> list[tuple[int, int]]:

@@ -11,7 +11,7 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 
-from app.config import settings
+from app.config import settings, StreamConfig
 from app.stream.reader import StreamReader
 from app.stream.pipeline import FramePipeline
 from app.stream.websocket_manager import WebSocketManager
@@ -30,6 +30,7 @@ class PipelineStack:
     pipeline: FramePipeline
     ws_manager: WebSocketManager
     recorder: RecordingService
+    stream_cfg: StreamConfig = field(default_factory=StreamConfig)
     # Processor references for API access
     processors: dict = field(default_factory=dict)
     pipeline_task: asyncio.Task | None = None
@@ -70,20 +71,36 @@ class StreamRegistry:
         url = stream["url"]
         source = 0 if url.strip() == "0" else url
 
+        # ── Per-stream config — load from DB or seed from global defaults ─────
+        raw_cfg = await db.load_stream_config(stream_id)
+        if raw_cfg:
+            stream_cfg = StreamConfig()
+            stream_cfg.apply_dict(raw_cfg)
+        else:
+            stream_cfg = StreamConfig.from_settings(settings)
+            await db.save_stream_config(stream_id, stream_cfg.to_db_dict())
+
         ws_manager = WebSocketManager()
         reader = StreamReader(source=source, loop=loop)
         pipeline = FramePipeline(input_queue=reader.queue, ws_manager=ws_manager)
+        pipeline._cfg = stream_cfg
+        pipeline._frame_interval = 1.0 / stream_cfg.target_fps
 
         # ── Processors ────────────────────────────────────────────────────────
         from app.processors.motion import MotionProcessor
         motion_proc = MotionProcessor()
-        motion_proc.enabled = settings.enable_motion
+        motion_proc._cfg = stream_cfg
+        motion_proc.enabled = stream_cfg.enable_motion
         pipeline.add_processor(motion_proc)
 
         from app.processors.zones import ZoneProcessor
         zone_proc = ZoneProcessor(ws_manager=ws_manager)
-        zone_proc.enabled = settings.enable_zones
+        zone_proc._cfg = stream_cfg
+        zone_proc.enabled = stream_cfg.enable_zones
         zone_proc._stream_id = stream_id
+        zone_proc._channel_number = stream["channel_number"]
+        from app.processors.zones import _slugify
+        zone_proc._channel_slug = _slugify(stream["name"])
         # Load this stream's zones from DB into the per-stack zone store
         saved_zones = await db.load_zones(stream_id)
         zone_proc._zones = {
@@ -95,13 +112,15 @@ class StreamRegistry:
 
         from app.processors.detection import DetectionProcessor
         det_proc = DetectionProcessor()
-        det_proc.enabled = settings.enable_detection
+        det_proc._cfg = stream_cfg
+        det_proc.enabled = stream_cfg.enable_detection
         det_proc._ws_manager = ws_manager
         pipeline.add_processor(det_proc)
 
         from app.processors.faces import FaceProcessor
         face_proc = FaceProcessor()
-        face_proc.enabled = settings.enable_faces
+        face_proc._cfg = stream_cfg
+        face_proc.enabled = stream_cfg.enable_faces
         face_proc._ws_manager = ws_manager
         pipeline.add_processor(face_proc)
 
@@ -130,6 +149,7 @@ class StreamRegistry:
             pipeline=pipeline,
             ws_manager=ws_manager,
             recorder=recorder,
+            stream_cfg=stream_cfg,
             processors={
                 "MotionProcessor":    motion_proc,
                 "ZoneProcessor":      zone_proc,

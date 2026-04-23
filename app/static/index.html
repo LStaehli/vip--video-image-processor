@@ -54,6 +54,12 @@
               <circle cx="12" cy="13" r="4"/>
             </svg>
           </button>
+          <button id="btn-toggle-sidebar" class="header-icon-btn" title="Toggle sidebar" aria-label="Toggle sidebar">
+            <svg id="sidebar-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"
+                 fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/>
+            </svg>
+          </button>
           <button id="btn-stream-settings" class="header-icon-btn" title="Stream settings" aria-label="Stream settings">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
                  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -325,6 +331,7 @@
               <input type="text" id="gs-sf-url" class="text-input" placeholder="0  or  rtsp://..." spellcheck="false" />
               <div class="field-hint">Use <code>0</code> for the local webcam, or an RTSP / MJPEG URL.</div>
             </div>
+            <p id="gs-sf-error" class="form-error hidden"></p>
             <div class="stream-form-actions">
               <button id="btn-sf-cancel" class="btn-secondary">Cancel</button>
               <button id="btn-sf-save">Save</button>
@@ -558,6 +565,75 @@
       </div>
     </div>
   </div>
+
+  <!-- ── Zone Name Modal ── -->
+  <div id="zone-name-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal modal--compact">
+      <div class="modal-header">
+        <h3>Name this zone</h3>
+        <button class="modal-close" id="btn-zone-name-close" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-row modal-row--col">
+          <label for="zone-name-input">Zone name</label>
+          <input type="text" id="zone-name-input" class="text-input" spellcheck="false" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btn-zone-name-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-zone-name-confirm">Save zone</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Zone Notification Settings Modal ── -->
+  <div id="zone-settings-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Zone Settings — <span id="zs-zone-name"></span></h3>
+        <button class="modal-close" id="btn-zone-settings-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="modal-group">
+          <div class="modal-group-title">Notification messages</div>
+          <p class="field-hint" style="margin-bottom:0.25rem">
+            These messages are sent when this zone is triggered.<br> Leave blank to use the default.
+          </p>
+
+          <div class="modal-row modal-row--col">
+            <label for="zs-telegram-msg">Telegram</label>
+            <textarea id="zs-telegram-msg" class="text-input zs-textarea"
+                      placeholder="Motion detected in {zone_name} on channel {channel_number}"
+                      rows="3" spellcheck="false"></textarea>
+          </div>
+
+          <div class="modal-row modal-row--col">
+            <label for="zs-email-msg">Email</label>
+            <textarea id="zs-email-msg" class="text-input zs-textarea"
+                      placeholder="Motion detected in {zone_name} on channel {channel_number}"
+                      rows="3" spellcheck="false"></textarea>
+          </div>
+
+          <p class="field-hint" style="margin-top:0.25rem">
+            Available variables: <code>{zone_name}</code>&nbsp;<code>{channel_number}</code><br>
+            <code>{channel_slug}</code>&nbsp;<code>{current_timestamp}</code>
+          </p>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-zone-settings-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-zone-settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <footer id="app-footer">
+    &copy; 2026 Ludovic Staehli &mdash; All Rights Reserved
+  </footer>
 
   <script src="/js/stream.js"></script>
   <script src="/js/controls.js"></script>

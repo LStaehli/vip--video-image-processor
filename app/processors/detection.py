@@ -46,6 +46,7 @@ class DetectionProcessor(BaseProcessor):
 
     def __init__(self) -> None:
         self.enabled = False
+        self._cfg = None                     # injected by registry
         self._model = None
         self._loaded_model_name: str | None = None
         self._frame_count = 0
@@ -59,7 +60,8 @@ class DetectionProcessor(BaseProcessor):
     # ── Public interface ──────────────────────────────────────────────────────
 
     def process(self, frame: np.ndarray, state: FrameState) -> np.ndarray:
-        target = settings.yolo_model
+        cfg = self._cfg
+        target = cfg.yolo_model if cfg else "yolov8n.pt"
         need_load = self._model is None or self._loaded_model_name != target
 
         if need_load and not self._loading:
@@ -70,14 +72,14 @@ class DetectionProcessor(BaseProcessor):
             return frame
 
         self._frame_count += 1
-        skip = max(1, settings.yolo_skip_frames)
+        skip = max(1, cfg.yolo_skip_frames if cfg else 3)
 
         if self._frame_count % skip == 0:
             self._cached = self._infer(frame)
             logger.debug(
                 "YOLOv8 inference: %d detection(s) (model=%s conf=%.2f skip=%d)",
-                len(self._cached), settings.yolo_model,
-                settings.yolo_confidence, skip,
+                len(self._cached), target,
+                cfg.yolo_confidence if cfg else 0.4, skip,
             )
 
         self._draw(frame, self._cached)
@@ -155,8 +157,9 @@ class DetectionProcessor(BaseProcessor):
         if self._model is None:
             return []
 
-        allowed = set(settings.detect_class_list)   # empty set = all classes
-        conf_threshold = settings.yolo_confidence
+        cfg = self._cfg
+        allowed = set(cfg.detect_class_list if cfg else [])
+        conf_threshold = cfg.yolo_confidence if cfg else 0.4
         detections: list[Detection] = []
 
         try:

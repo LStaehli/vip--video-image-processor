@@ -22,8 +22,10 @@ DELETE /api/streams/{id}/zones                — clear all zones on stream
 import asyncio
 import logging
 
+import aiosqlite
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Optional
 
 from app.services import database as db
 
@@ -103,7 +105,13 @@ async def create_stream(body: StreamCreate):
     if body.channel_number < 1 or body.channel_number > MAX_STREAMS:
         raise HTTPException(status_code=422, detail=f"Channel number must be 1–{MAX_STREAMS}")
 
-    stream = await db.insert_stream(body.channel_number, name, url)
+    try:
+        stream = await db.insert_stream(body.channel_number, name, url)
+    except aiosqlite.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Channel number {body.channel_number} is already in use",
+        )
     logger.info("Stream registered: ch%d '%s' → %s", body.channel_number, name, url)
     # Start the pipeline immediately — no restart needed
     await _start_stack(stream)
@@ -130,7 +138,14 @@ async def update_stream(stream_id: int, body: StreamUpdate):
     if body.enabled is not None:
         kwargs["enabled"] = int(body.enabled)
 
-    if not await db.update_stream(stream_id, **kwargs):
+    try:
+        found = await db.update_stream(stream_id, **kwargs)
+    except aiosqlite.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Channel number {body.channel_number} is already in use",
+        )
+    if not found:
         raise HTTPException(status_code=404, detail="Stream not found")
 
     logger.info("Stream %d updated: %s", stream_id, kwargs)
@@ -240,6 +255,11 @@ class ZoneCreate(BaseModel):
     polygon: list[list[float]]   # [[nx, ny], …] normalised 0–1
 
 
+class ZoneSettingsUpdate(BaseModel):
+    telegram_message: str = ""
+    email_message: str = ""
+
+
 def _get_zone_proc(stream_id: int):
     stack = _get_active_stack(stream_id)
     if not stack:
@@ -268,8 +288,117 @@ async def create_stream_zone(stream_id: int, body: ZoneCreate):
 async def delete_stream_zone(stream_id: int, zone_id: str):
     if not _get_zone_proc(stream_id).remove_zone(zone_id):
         raise HTTPException(status_code=404, detail="Zone not found")
+    await db.delete_zone_settings(zone_id)
 
 
 @router.delete("/{stream_id}/zones", status_code=204)
 async def clear_stream_zones(stream_id: int):
-    _get_zone_proc(stream_id).clear_zones()
+    zp = _get_zone_proc(stream_id)
+    zone_ids = [z["id"] for z in zp.list_zones()]
+    zp.clear_zones()
+    for zone_id in zone_ids:
+        await db.delete_zone_settings(zone_id)
+
+
+# ── Per-stream pipeline config ───────────────────────────────────────────────
+
+class StreamConfigUpdate(BaseModel):
+    # Pipeline
+    target_fps: Optional[int] = None
+    jpeg_quality: Optional[int] = None
+    # Feature toggles
+    enable_motion: Optional[bool] = None
+    enable_zones: Optional[bool] = None
+    enable_detection: Optional[bool] = None
+    enable_faces: Optional[bool] = None
+    # Zones
+    zone_stop_mode: Optional[str] = None
+    notify_on_zone_trigger: Optional[bool] = None
+    # Motion tuning
+    motion_min_area: Optional[int] = None
+    motion_trail_length: Optional[int] = None
+    motion_mog2_threshold: Optional[int] = None
+    motion_dilate_kernel: Optional[int] = None
+    # Motion visual
+    motion_trail_enabled: Optional[bool] = None
+    motion_trail_color: Optional[str] = None
+    motion_trail_max_radius: Optional[int] = None
+    motion_contour_enabled: Optional[bool] = None
+    motion_contour_color: Optional[str] = None
+    motion_contour_thickness: Optional[int] = None
+    motion_arrow_color: Optional[str] = None
+    motion_arrow_thickness: Optional[int] = None
+    motion_arrow_enabled: Optional[bool] = None
+    motion_center_color: Optional[str] = None
+    motion_center_radius: Optional[int] = None
+    motion_center_enabled: Optional[bool] = None
+    # Detection
+    yolo_model: Optional[str] = None
+    yolo_confidence: Optional[float] = None
+    yolo_skip_frames: Optional[int] = None
+    detect_classes: Optional[str] = None
+    # Faces
+    face_model: Optional[str] = None
+    face_similarity_threshold: Optional[float] = None
+    face_skip_frames: Optional[int] = None
+    face_show_landmarks: Optional[bool] = None
+    face_auto_enroll: Optional[bool] = None
+    face_auto_enroll_min_score: Optional[float] = None
+
+
+@router.get("/{stream_id}/config")
+async def get_stream_config(stream_id: int):
+    stack = _get_active_stack(stream_id)
+    if not stack:
+        raise HTTPException(status_code=404, detail="Stream not active")
+    return stack.stream_cfg.to_api_dict()
+
+
+@router.put("/{stream_id}/config")
+async def update_stream_config(stream_id: int, body: StreamConfigUpdate):
+    stack = _get_active_stack(stream_id)
+    if not stack:
+        raise HTTPException(status_code=404, detail="Stream not active")
+
+    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    if not patch:
+        return stack.stream_cfg.to_api_dict()
+
+    stack.stream_cfg.apply_dict(patch)
+
+    # Apply processor toggle changes immediately
+    toggle_map = {
+        "MotionProcessor":    body.enable_motion,
+        "ZoneProcessor":      body.enable_zones,
+        "DetectionProcessor": body.enable_detection,
+        "FaceProcessor":      body.enable_faces,
+    }
+    for proc_name, val in toggle_map.items():
+        if val is not None:
+            proc = stack.get_processor(proc_name)
+            if proc:
+                proc.enabled = val
+
+    # Apply FPS change immediately
+    if body.target_fps is not None:
+        stack.pipeline._frame_interval = 1.0 / body.target_fps
+
+    # Persist to DB
+    await db.save_stream_config(stream_id, stack.stream_cfg.to_db_dict())
+
+    return stack.stream_cfg.to_api_dict()
+
+
+# ── Per-zone notification settings ───────────────────────────────────────────
+
+@router.get("/{stream_id}/zones/{zone_id}/settings")
+async def get_stream_zone_settings(stream_id: int, zone_id: str):
+    _get_zone_proc(stream_id)  # validates stream is active
+    return await db.get_zone_settings(zone_id)
+
+
+@router.put("/{stream_id}/zones/{zone_id}/settings")
+async def update_stream_zone_settings(stream_id: int, zone_id: str, body: ZoneSettingsUpdate):
+    _get_zone_proc(stream_id)  # validates stream is active
+    await db.upsert_zone_settings(zone_id, body.telegram_message, body.email_message)
+    return await db.get_zone_settings(zone_id)

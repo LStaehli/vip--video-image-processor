@@ -32,7 +32,8 @@ class FramePipeline:
         self._ws = ws_manager
         self._processors: list = []
         self._running = False
-        self._frame_interval = 1.0 / settings.target_fps
+        self._cfg = None   # injected by registry
+        self._frame_interval = 1.0 / settings.target_fps  # overwritten by registry
 
         # FPS tracking — rolling window of recent frame timestamps
         self._frame_times: deque[float] = deque(maxlen=_FPS_WINDOW)
@@ -97,8 +98,9 @@ class FramePipeline:
                 self._recorder.write_frame(frame)
 
             # Encode and broadcast
+            quality = self._cfg.jpeg_quality if self._cfg else settings.jpeg_quality
             ok, jpeg_buf = cv2.imencode(
-                ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, settings.jpeg_quality]
+                ".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, quality]
             )
             if not ok:
                 continue
