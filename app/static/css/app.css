@@ -23,34 +23,59 @@ body {
   overflow: hidden;
 }
 
-/* ── Header ── */
+/* ── Header (app-level) ── */
 header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 1rem;
   padding: 0.6rem 1.2rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
 
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
 h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: 0.04em; }
 h1 .subtitle { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
 
-#status-bar { display: flex; align-items: center; gap: 0.5rem; color: var(--muted); font-size: 0.8rem; }
 .sep { opacity: 0.3; }
+
+/* ── Stream context bar (stream-level) ── */
+#stream-context-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  height: 38px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.ctx-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.ctx-source {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+  font-size: 0.75rem;
+}
+
+.ctx-right {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
 
 .header-icon-btn {
   margin-left: 0;
@@ -81,6 +106,14 @@ h1 .subtitle { font-weight: 400; color: var(--muted); font-size: 0.85rem; }
 
 /* ── Main layout ── */
 main { display: flex; flex: 1; overflow: hidden; }
+
+#video-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
 
 #canvas-container {
   flex: 1;
@@ -136,7 +169,7 @@ h2 {
 
 label { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
 
-#stream-source { color: var(--muted); font-size: 0.75rem; word-break: break-all; }
+/* #stream-source is styled via .ctx-source in the context bar */
 
 button {
   background: var(--accent);
@@ -497,6 +530,37 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 }
 .zone-delete:hover { color: var(--red); opacity: 1; }
 
+/* ── Stream registry items ── */
+.stream-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.stream-item:last-child { border-bottom: none; }
+.stream-ch   { font-weight: 600; color: var(--accent); min-width: 2.8rem; }
+.stream-name { flex: 0 0 auto; min-width: 7rem; }
+.stream-url  { flex: 1; color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-edit-btn,
+.stream-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-dim);
+  font-size: 0.9rem;
+  padding: 0 0.2rem;
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+.stream-edit-btn:hover   { color: var(--accent); opacity: 1; }
+.stream-delete-btn:hover { color: var(--red);    opacity: 1; }
+
+/* ── Stream add / edit form ── */
+.stream-form { margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--border); }
+.stream-form-actions { display: flex; gap: 0.5rem; justify-content: flex-end; margin-top: 0.5rem; }
+
 /* ── Toggle row (inline toggle + label) ── */
 .toggle-row {
   display: flex;
@@ -660,4 +724,42 @@ input[type="color"]::-webkit-color-swatch { border: none; border-radius: 3px; }
 
 .screenshot-btn.flash {
   animation: screenshot-flash 0.6s ease-out forwards;
+}
+
+/* ── Stream tab bar (inside header) ── */
+.stream-tabs {
+  display: flex;
+  flex-direction: row;
+  gap: 0.25rem;
+  padding: 0 0.25rem;
+  flex: 1;
+  overflow-x: auto;
+  align-items: center;
+}
+
+.stream-tabs:empty { display: none; }
+
+.stream-tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.stream-tab:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(79,142,247,0.08);
+}
+
+.stream-tab.active {
+  color: var(--text);
+  border-color: var(--accent);
+  background: rgba(79,142,247,0.15);
+  font-weight: 600;
 }

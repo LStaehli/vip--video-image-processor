@@ -3,7 +3,7 @@
 Zones are closed polygons stored in normalised coordinates (0–1 relative to
 frame size) so they survive stream resolution changes.
 
-Zone definitions are persisted in SQLite and reloaded on startup.
+Zone definitions are persisted in SQLite (per stream) and reloaded on startup.
 
 On every frame:
   1. Zones are drawn (semi-transparent fill + outline + label)
@@ -46,35 +46,6 @@ class Zone:
     polygon: list[list[float]]   # [[nx, ny], …] normalised 0–1
 
 
-# ── Shared in-memory store — imported by the API module ──────────────────────
-
-zones: dict[str, Zone] = {}
-
-
-def add_zone(name: str, polygon: list[list[float]]) -> Zone:
-    zid = str(uuid.uuid4())
-    z = Zone(id=zid, name=name, polygon=polygon)
-    zones[zid] = z
-    asyncio.ensure_future(db.insert_zone(zid, name, polygon))
-    logger.info("Zone created: %s (%s, %d pts)", name, zid, len(polygon))
-    return z
-
-
-def remove_zone(zone_id: str) -> bool:
-    if zone_id in zones:
-        del zones[zone_id]
-        asyncio.ensure_future(db.delete_zone(zone_id))
-        logger.info("Zone removed: %s", zone_id)
-        return True
-    return False
-
-
-def clear_zones() -> None:
-    zones.clear()
-    asyncio.ensure_future(db.delete_all_zones())
-    logger.info("All zones cleared")
-
-
 # ── Processor ─────────────────────────────────────────────────────────────────
 
 class ZoneProcessor(BaseProcessor):
@@ -82,14 +53,46 @@ class ZoneProcessor(BaseProcessor):
     def __init__(self, ws_manager=None) -> None:
         self.enabled = False
         self._ws = ws_manager
-        self._recorder = None             # injected by main.py
-        self._notifier = None             # injected by main.py
+        self._recorder = None             # injected by registry
+        self._notifier = None             # injected by registry
         self._zone_recording = False      # True when this processor started recording
         self._inactive_since: float | None = None
-        self._active_zones: set[str] = set()  # zone IDs currently being hit (for edge detection)
+        self._active_zones: set[str] = set()  # zone IDs currently being hit (edge detection)
+        self._zones: dict[str, Zone] = {}     # per-stream zone store
+        self._stream_id: int | None = None    # set by registry
+
+    # ── Zone CRUD (instance-scoped, stream-aware) ─────────────────────────────
+
+    def add_zone(self, name: str, polygon: list[list[float]]) -> Zone:
+        zid = str(uuid.uuid4())
+        z = Zone(id=zid, name=name, polygon=polygon)
+        self._zones[zid] = z
+        asyncio.ensure_future(db.insert_zone(self._stream_id, zid, name, polygon))
+        logger.info("Zone created: %s (%s, %d pts) on stream %s", name, zid, len(polygon), self._stream_id)
+        return z
+
+    def remove_zone(self, zone_id: str) -> bool:
+        if zone_id in self._zones:
+            del self._zones[zone_id]
+            self._active_zones.discard(zone_id)
+            asyncio.ensure_future(db.delete_zone(zone_id))
+            logger.info("Zone removed: %s", zone_id)
+            return True
+        return False
+
+    def clear_zones(self) -> None:
+        self._zones.clear()
+        self._active_zones.clear()
+        asyncio.ensure_future(db.delete_all_zones(self._stream_id))
+        logger.info("All zones cleared for stream %s", self._stream_id)
+
+    def list_zones(self) -> list[dict]:
+        return [{"id": z.id, "name": z.name, "polygon": z.polygon} for z in self._zones.values()]
+
+    # ── Frame processing ──────────────────────────────────────────────────────
 
     def process(self, frame: np.ndarray, state: FrameState) -> np.ndarray:
-        if not zones:
+        if not self._zones:
             return frame
 
         h, w = frame.shape[:2]
@@ -98,14 +101,14 @@ class ZoneProcessor(BaseProcessor):
 
         logger.debug(
             "ZoneProcessor: %d zone(s), %d centroid(s), stop_mode=%s",
-            len(zones), len(state.centroids), stop_mode,
+            len(self._zones), len(state.centroids), stop_mode,
         )
 
         # ── Draw zones and test centroids ─────────────────────────────────────
         any_zone_hit = False
         newly_hit: list[Zone] = []   # zones that transitioned inactive → active this frame
 
-        for zone in zones.values():
+        for zone in self._zones.values():
             pts = _denorm(zone.polygon, w, h)
             if len(pts) < 3:
                 continue

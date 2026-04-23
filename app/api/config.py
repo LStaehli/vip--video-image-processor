@@ -1,7 +1,8 @@
 """Runtime configuration API.
 
 Allows toggling features and adjusting pipeline parameters without restarting
-the server. Changes affect the current process only — they are not persisted.
+the server. Changes affect the current process only — they are not persisted,
+except for the three recording fields which are written to the DB.
 """
 import logging
 from typing import Optional
@@ -14,15 +15,13 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/config")
 
-# References injected by main.py
-_pipeline = None
-_reader = None
+# Registry injected by main.py — all stacks share global settings
+_registry = None
 
 
-def init(pipeline, reader=None) -> None:
-    global _pipeline, _reader
-    _pipeline = pipeline
-    _reader = reader
+def init(registry) -> None:
+    global _registry
+    _registry = registry
 
 
 class ConfigUpdate(BaseModel):
@@ -76,10 +75,12 @@ class ConfigUpdate(BaseModel):
 async def get_config():
     """Return current runtime configuration."""
     processor_states = {}
-    if _pipeline:
-        for p in _pipeline._processors:
-            name = type(p).__name__
-            processor_states[name] = getattr(p, "enabled", True)
+    if _registry:
+        stacks = _registry.all()
+        if stacks:
+            for p in stacks[0].pipeline._processors:
+                name = type(p).__name__
+                processor_states[name] = getattr(p, "enabled", True)
 
     return {
         "stream_url": settings.stream_url,
@@ -129,24 +130,25 @@ async def update_config(update: ConfigUpdate):
     """Update one or more runtime config values.
 
     Feature toggles (enable_*) set the `enabled` flag on the corresponding
-    processor so it is skipped in the next frame cycle without restarting.
+    processor in ALL active stacks so they are skipped without restarting.
     """
     for field_name in ("recording_output_dir", "recording_filename_pattern", "recording_project_name"):
         val = getattr(update, field_name, None)
         if val is not None:
             setattr(settings, field_name, val)
             logger.info("%s updated to %s", field_name, val)
+            from app.services import database as db_service
+            await db_service.save_app_setting(field_name, val)
 
     if update.stream_url is not None:
         settings.stream_url = update.stream_url
-        if _reader:
-            _reader.set_source(settings.stream_source)
         logger.info("stream_url updated to %s", update.stream_url)
 
     if update.target_fps is not None:
         settings.target_fps = update.target_fps
-        if _pipeline:
-            _pipeline._frame_interval = 1.0 / update.target_fps
+        if _registry:
+            for stack in _registry.all():
+                stack.pipeline._frame_interval = 1.0 / update.target_fps
         logger.info("target_fps updated to %d", update.target_fps)
 
     if update.jpeg_quality is not None:
@@ -180,7 +182,7 @@ async def update_config(update: ConfigUpdate):
             setattr(settings, field_name, val)
             logger.info("%s updated to %s", field_name, val)
 
-    # Visual style — simply write through to settings; processor reads on every frame
+    # Visual style — write through to settings; processors read on every frame
     visual_fields = [
         "motion_trail_enabled", "motion_trail_color", "motion_trail_max_radius",
         "motion_contour_enabled", "motion_contour_color", "motion_contour_thickness",
@@ -205,18 +207,30 @@ async def update_config(update: ConfigUpdate):
         settings.notify_on_zone_trigger = update.notify_on_zone_trigger
         logger.info("notify_on_zone_trigger updated to %s", update.notify_on_zone_trigger)
 
-    if _pipeline:
+    # Apply processor toggles to ALL active stacks
+    if _registry:
         toggle_map = {
-            "MotionProcessor": update.enable_motion,
-            "ZoneProcessor": update.enable_zones,
+            "MotionProcessor":    update.enable_motion,
+            "ZoneProcessor":      update.enable_zones,
             "DetectionProcessor": update.enable_detection,
-            "FaceProcessor": update.enable_faces,
+            "FaceProcessor":      update.enable_faces,
         }
-        for processor in _pipeline._processors:
-            name = type(processor).__name__
-            val = toggle_map.get(name)
+        for stack in _registry.all():
+            for processor in stack.pipeline._processors:
+                name = type(processor).__name__
+                val = toggle_map.get(name)
+                if val is not None:
+                    processor.enabled = val
+                    logger.info("Stack %d: %s enabled=%s", stack.stream_id, name, val)
+
+        # Also update global settings flags for new stacks starting later
+        for flag, val in [
+            ("enable_motion", update.enable_motion),
+            ("enable_zones", update.enable_zones),
+            ("enable_detection", update.enable_detection),
+            ("enable_faces", update.enable_faces),
+        ]:
             if val is not None:
-                processor.enabled = val
-                logger.info("%s enabled=%s", name, val)
+                setattr(settings, flag, val)
 
     return await get_config()

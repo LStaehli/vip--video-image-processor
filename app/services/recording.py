@@ -5,6 +5,8 @@ The output path and filename are resolved from a configurable pattern
 that supports the following variables:
 
     {project_name}       — settings.recording_project_name
+    {channel_number}     — channel number (e.g. 1, 2)
+    {channel_slug}       — slugified channel name (e.g. front-door)
     {current_date}       — YYYY-MM-DD
     {current_timestamp}  — YYYY-MM-DD_HH-MM-SS
 
@@ -13,6 +15,7 @@ Each recording session is logged to the database on start and finalised
 """
 import asyncio
 import logging
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -26,14 +29,25 @@ from app.services import database as db
 logger = logging.getLogger(__name__)
 
 
+def _slugify(text: str) -> str:
+    """Convert a channel name to a URL-safe slug (e.g. 'Front Door' → 'front-door')."""
+    text = text.lower().strip()
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[\s_]+", "-", text)
+    text = re.sub(r"-{2,}", "-", text)
+    return text or "channel"
+
+
 class RecordingService:
 
-    def __init__(self) -> None:
+    def __init__(self, channel_number: int = 1, channel_name: str = "channel") -> None:
         self.is_recording = False
         self._writer: cv2.VideoWriter | None = None
         self._current_file: str | None = None
         self._started_at: float | None = None
         self._recording_id: str | None = None
+        self._channel_number = channel_number
+        self._channel_slug = _slugify(channel_name)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -146,6 +160,8 @@ class RecordingService:
         now = datetime.now()
         variables = {
             "{project_name}":      settings.recording_project_name,
+            "{channel_number}":    str(self._channel_number),
+            "{channel_slug}":      self._channel_slug,
             "{current_date}":      now.strftime("%Y-%m-%d"),
             "{current_timestamp}": now.strftime("%Y-%m-%d_%H-%M-%S"),
         }

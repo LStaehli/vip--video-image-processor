@@ -496,9 +496,11 @@ const ssFps       = bindRange('ss-fps',     'ss-fps-val');
 const ssQuality   = bindRange('ss-quality', 'ss-quality-val');
 
 async function openStreamSettings() {
-  // Fetch both status (live stats) and config (editable values) in parallel
+  // Fetch both status (live stats for the active stream) and config in parallel
+  const sid = window.activeStreamId;
+  const statusUrl = sid ? `/api/status?stream_id=${sid}` : '/api/status';
   const [statusRes, configRes] = await Promise.all([
-    fetch('/api/status'),
+    fetch(statusUrl),
     fetch('/api/config'),
   ]);
   const status = await statusRes.json();
@@ -545,6 +547,104 @@ btnStreamApply.addEventListener('click', async () => {
 
 // ── General Settings Modal ────────────────────────────────────────────────────
 
+// ── Stream Registry ───────────────────────────────────────────────────────────
+
+const gsStreamList  = document.getElementById('gs-stream-list');
+const gsStreamCount = document.getElementById('gs-stream-count');
+const gsStreamForm  = document.getElementById('gs-stream-form');
+const gsSfCh        = document.getElementById('gs-sf-ch');
+const gsSfName      = document.getElementById('gs-sf-name');
+const gsSfUrl       = document.getElementById('gs-sf-url');
+const btnAddStream  = document.getElementById('btn-add-stream');
+const btnSfCancel   = document.getElementById('btn-sf-cancel');
+const btnSfSave     = document.getElementById('btn-sf-save');
+
+const MAX_STREAMS = 4;
+let _editingStreamId = null;   // null = adding, number = editing
+
+function renderStreams(streams) {
+  gsStreamList.innerHTML = '';
+  gsStreamCount.textContent = `(${streams.length} / ${MAX_STREAMS})`;
+  btnAddStream.disabled = streams.length >= MAX_STREAMS;
+
+  streams.forEach(s => {
+    const row = document.createElement('div');
+    row.className = 'stream-item';
+    row.dataset.id = s.id;
+    row.innerHTML = `
+      <span class="stream-ch">CH${s.channel_number}</span>
+      <span class="stream-name">${s.name}</span>
+      <span class="stream-url">${s.url}</span>
+      <button class="stream-edit-btn" title="Edit">✎</button>
+      <button class="stream-delete-btn" title="Remove">&times;</button>`;
+
+    row.querySelector('.stream-edit-btn').addEventListener('click', () => openStreamForm(s));
+    row.querySelector('.stream-delete-btn').addEventListener('click', () => deleteStream(s.id));
+    gsStreamList.appendChild(row);
+  });
+}
+
+async function loadStreams() {
+  try {
+    const res = await fetch('/api/streams');
+    const data = await res.json();
+    renderStreams(data.streams ?? []);
+  } catch (e) {
+    console.warn('failed to load streams', e);
+  }
+}
+
+function openStreamForm(stream = null) {
+  _editingStreamId = stream ? stream.id : null;
+  gsSfCh.value   = stream ? stream.channel_number : '';
+  gsSfName.value = stream ? stream.name : '';
+  gsSfUrl.value  = stream ? stream.url  : '';
+  gsStreamForm.classList.remove('hidden');
+  btnAddStream.classList.add('hidden');
+  gsSfName.focus();
+}
+
+function closeStreamForm() {
+  gsStreamForm.classList.add('hidden');
+  btnAddStream.classList.remove('hidden');
+  _editingStreamId = null;
+}
+
+async function deleteStream(id) {
+  if (!confirm('Remove this stream?')) return;
+  await fetch(`/api/streams/${id}`, { method: 'DELETE' });
+  await loadStreams();
+}
+
+btnAddStream.addEventListener('click', () => openStreamForm());
+btnSfCancel.addEventListener('click', closeStreamForm);
+
+btnSfSave.addEventListener('click', async () => {
+  const ch   = parseInt(gsSfCh.value);
+  const name = gsSfName.value.trim();
+  const url  = gsSfUrl.value.trim();
+
+  if (!name || !url || isNaN(ch)) return;
+
+  if (_editingStreamId !== null) {
+    await fetch(`/api/streams/${_editingStreamId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_number: ch, name, url }),
+    });
+  } else {
+    await fetch('/api/streams', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel_number: ch, name, url }),
+    });
+  }
+  closeStreamForm();
+  await loadStreams();
+});
+
+// ── General Settings Modal ────────────────────────────────────────────────────
+
 const generalOverlay    = document.getElementById('general-settings-overlay');
 const btnGeneralOpen    = document.getElementById('btn-general-settings');
 const btnGeneralClose   = document.getElementById('btn-general-settings-close');
@@ -556,6 +656,7 @@ const gsProjectName     = document.getElementById('gs-project-name');
 const gsFilenamePattern = document.getElementById('gs-filename-pattern');
 
 async function openGeneralSettings() {
+  closeStreamForm();
   try {
     const res = await fetch('/api/config');
     const cfg = await res.json();
@@ -565,6 +666,7 @@ async function openGeneralSettings() {
   } catch (e) {
     console.warn('failed to load general settings', e);
   }
+  await loadStreams();
   generalOverlay.classList.remove('hidden');
 }
 
@@ -637,11 +739,16 @@ function _setRecordingState(active) {
   }
 }
 
+function _recordingBase() {
+  const sid = window.activeStreamId;
+  return sid ? `/api/streams/${sid}/recording` : '/api/recording';
+}
+
 btnRecord.addEventListener('click', async () => {
   if (_recordingActive) {
     // Stop
     try {
-      const res  = await fetch('/api/recording/stop', { method: 'POST' });
+      const res  = await fetch(`${_recordingBase()}/stop`, { method: 'POST' });
       const data = await res.json();
       console.info('Recording saved to', data.saved_to);
     } catch (e) {
@@ -651,7 +758,7 @@ btnRecord.addEventListener('click', async () => {
   } else {
     // Start
     try {
-      const res = await fetch('/api/recording/start', { method: 'POST' });
+      const res = await fetch(`${_recordingBase()}/start`, { method: 'POST' });
       if (!res.ok) {
         const err = await res.json();
         console.warn('Failed to start recording', err);
@@ -671,7 +778,7 @@ const btnScreenshot = document.getElementById('btn-screenshot');
 
 btnScreenshot.addEventListener('click', async () => {
   try {
-    const res = await fetch('/api/recording/screenshot', { method: 'POST' });
+    const res = await fetch(`${_recordingBase()}/screenshot`, { method: 'POST' });
     if (!res.ok) {
       const err = await res.json();
       console.warn('Screenshot failed', err);
@@ -690,7 +797,7 @@ btnScreenshot.addEventListener('click', async () => {
 
 
 // Sync recording state on page load (in case server was already recording)
-fetch('/api/recording/status')
+fetch(_recordingBase() + '/status')
   .then(r => r.json())
   .then(data => {
     if (data.is_recording) {

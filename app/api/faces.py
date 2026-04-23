@@ -12,15 +12,13 @@ from app.services import face_store
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/faces")
 
-# References injected by main.py
-_pipeline = None
-_face_proc = None
+# Registry injected by main.py
+_registry = None
 
 
-def init(pipeline, face_proc) -> None:
-    global _pipeline, _face_proc
-    _pipeline = pipeline
-    _face_proc = face_proc
+def init(registry) -> None:
+    global _registry
+    _registry = registry
 
 
 class EnrollRequest(BaseModel):
@@ -44,17 +42,28 @@ async def enroll_face(body: EnrollRequest):
     if not name:
         raise HTTPException(status_code=400, detail="Name must not be empty")
 
-    if not _face_proc or not _face_proc._model_ready:
+    # Find a stack with a ready face processor
+    face_proc = None
+    pipeline = None
+    if _registry:
+        for stack in _registry.all():
+            fp = stack.get_processor("FaceProcessor")
+            if fp and getattr(fp, "_model_ready", False):
+                face_proc = fp
+                pipeline = stack.pipeline
+                break
+
+    if not face_proc:
         raise HTTPException(
             status_code=503,
             detail="Face model not loaded yet — enable Face Recognition first and wait for the model to load",
         )
 
-    frame = getattr(_pipeline, "_last_frame", None)
+    frame = getattr(pipeline, "_last_frame", None)
     if frame is None:
         raise HTTPException(status_code=503, detail="No video frame available yet")
 
-    embedding = _face_proc.get_embedding_from_frame(frame)
+    embedding = face_proc.get_embedding_from_frame(frame)
     if embedding is None:
         raise HTTPException(
             status_code=422,

@@ -3,11 +3,13 @@
  *
  * NOTE: zoneCanvas is already declared by stream.js — do NOT re-declare it here.
  *
+ * All zone API calls are stream-scoped: /api/streams/{activeStreamId}/zones
+ *
  * UX:
  *  - Toggle switch enables/disables the ZoneProcessor on the server
  *  - "Draw zone" button activates drawing mode on the overlay canvas
  *  - Click to add vertices; click the first vertex (or double-click) to close
- *  - Completed polygon is named then POSTed to /api/zones
+ *  - Completed polygon is named then POSTed to /api/streams/{id}/zones
  *  - Saved zones appear in the sidebar list with a delete button
  *  - Zones are rendered server-side (baked into video frames); the canvas
  *    overlay is only used for the in-progress drawing interaction
@@ -29,10 +31,16 @@ let savedZones  = [];   // [{id, name, polygon}] from server
 
 const CLOSE_RADIUS = 14; // px — snap distance to close on first vertex
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function zonesBase() {
+  const sid = window.activeStreamId;
+  return sid ? `/api/streams/${sid}/zones` : null;
+}
+
 // ── Toggle ────────────────────────────────────────────────────────────────────
 
 zonesToggle.addEventListener('change', async () => {
-  console.log('[zones] toggle →', zonesToggle.checked);
   await fetch('/api/config', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -47,14 +55,12 @@ fetch('/api/config')
     zonesToggle.checked = cfg.enable_zones ?? false;
     const mode = cfg.zone_stop_mode ?? 'zone';
     stopRadios.forEach(r => { r.checked = (r.value === mode); });
-    console.log('[zones] initial state: enable_zones =', zonesToggle.checked, '| stop_mode =', mode);
   })
   .catch(e => console.warn('[zones] failed to load config', e));
 
 // Stop mode radio buttons
 stopRadios.forEach(radio => {
   radio.addEventListener('change', () => {
-    console.log('[zones] stop mode →', radio.value);
     fetch('/api/config', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -67,10 +73,8 @@ stopRadios.forEach(radio => {
 window.addEventListener('vip:event', (e) => {
   const { type, file } = e.detail;
   if (type === 'recording_started') {
-    console.log('[zones] recording started by zone trigger →', file);
     _setRecordingState(true);
   } else if (type === 'recording_stopped') {
-    console.log('[zones] recording stopped by zone inactivity →', file);
     _setRecordingState(false);
   }
 });
@@ -79,7 +83,6 @@ window.addEventListener('vip:event', (e) => {
 
 btnDraw.addEventListener('click', () => {
   if (drawingMode) {
-    console.log('[zones] drawing cancelled');
     cancelDrawing();
   } else {
     startDrawing();
@@ -90,7 +93,6 @@ btnDraw.addEventListener('click', () => {
 
 function getCanvasXY(e) {
   const rect   = zoneCanvas.getBoundingClientRect();
-  // Account for CSS scaling (canvas logical size vs displayed size)
   const scaleX = zoneCanvas.width  / rect.width;
   const scaleY = zoneCanvas.height / rect.height;
   return {
@@ -123,7 +125,6 @@ function startDrawing() {
   zoneCanvas.style.pointerEvents = 'auto';
   btnDraw.textContent = 'Cancel';
   btnDraw.classList.add('btn-drawing');
-  console.log('[zones] drawing mode ON — canvas size:', zoneCanvas.width, '×', zoneCanvas.height);
 }
 
 function cancelDrawing() {
@@ -156,16 +157,12 @@ zoneCanvas.addEventListener('click', (e) => {
 
   const { x, y } = getCanvasXY(e);
 
-  // Close polygon when clicking near the first vertex (need ≥3 pts already)
   if (currentPoly.length >= 3 && isNearFirst(x, y)) {
-    console.log('[zones] closing polygon by snapping to first vertex');
     completePoly();
     return;
   }
 
   currentPoly.push({ x, y });
-  const [nx, ny] = normalise(x, y);
-  console.log(`[zones] vertex #${currentPoly.length} added — canvas:(${Math.round(x)}, ${Math.round(y)}) norm:(${nx.toFixed(3)}, ${ny.toFixed(3)})`);
   renderOverlay();
 });
 
@@ -173,18 +170,12 @@ zoneCanvas.addEventListener('dblclick', (e) => {
   if (!drawingMode) return;
   e.preventDefault();
   if (currentPoly.length >= 3) {
-    console.log('[zones] closing polygon via double-click');
     completePoly();
-  } else {
-    console.warn('[zones] double-click ignored — need at least 3 vertices (have', currentPoly.length, ')');
   }
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && drawingMode) {
-    console.log('[zones] drawing cancelled via Escape');
-    cancelDrawing();
-  }
+  if (e.key === 'Escape' && drawingMode) cancelDrawing();
 });
 
 // ── Complete polygon ──────────────────────────────────────────────────────────
@@ -193,18 +184,20 @@ async function completePoly() {
   const poly = currentPoly.slice();
   cancelDrawing();
 
-  const defaultName = `Zone ${savedZones.length + 1}`;
-  const name = window.prompt('Zone name:', defaultName);
-  if (!name || !name.trim()) {
-    console.log('[zones] zone creation cancelled (no name given)');
+  const base = zonesBase();
+  if (!base) {
+    console.warn('[zones] no active stream — cannot save zone');
     return;
   }
 
+  const defaultName = `Zone ${savedZones.length + 1}`;
+  const name = window.prompt('Zone name:', defaultName);
+  if (!name || !name.trim()) return;
+
   const normPoly = poly.map(({ x, y }) => normalise(x, y));
-  console.log('[zones] saving zone "%s" with %d vertices:', name.trim(), normPoly.length, normPoly);
 
   try {
-    const res = await fetch('/api/zones', {
+    const res = await fetch(base, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: name.trim(), polygon: normPoly }),
@@ -215,7 +208,6 @@ async function completePoly() {
       return;
     }
     const zone = await res.json();
-    console.log('[zones] zone created:', zone);
     savedZones.push(zone);
     renderZoneList();
   } catch (e) {
@@ -276,17 +268,16 @@ function renderZoneList() {
     item.append(label, del);
     zoneList.append(item);
   }
-  console.log('[zones] sidebar rendered:', savedZones.length, 'zone(s)');
 }
 
 async function deleteZone(id) {
-  console.log('[zones] deleting zone', id);
+  const base = zonesBase();
+  if (!base) return;
   try {
-    const res = await fetch(`/api/zones/${id}`, { method: 'DELETE' });
+    const res = await fetch(`${base}/${id}`, { method: 'DELETE' });
     if (res.ok) {
       savedZones = savedZones.filter(z => z.id !== id);
       renderZoneList();
-      console.log('[zones] zone deleted');
     } else {
       console.warn('[zones] delete failed', res.status);
     }
@@ -295,22 +286,29 @@ async function deleteZone(id) {
   }
 }
 
-// ── Load zones on start ───────────────────────────────────────────────────────
+// ── Load zones on start / stream switch ───────────────────────────────────────
 
 async function loadZones() {
+  const base = zonesBase();
+  if (!base) {
+    savedZones = [];
+    renderZoneList();
+    return;
+  }
   try {
-    const res  = await fetch('/api/zones');
+    const res  = await fetch(base);
     savedZones = await res.json();
-    console.log('[zones] loaded', savedZones.length, 'zone(s) from server');
     renderZoneList();
   } catch (e) {
     console.warn('[zones] failed to load zones', e);
   }
 }
 
+// Expose globally so stream.js can call it on tab switch
+window.loadZones = loadZones;
+
 // Zone canvas is transparent and non-interactive by default
 zoneCanvas.style.pointerEvents = 'none';
 zoneCanvas.style.cursor        = 'default';
 
-console.log('[zones] zone_editor.js loaded ✓');
 loadZones();

@@ -1,11 +1,11 @@
 /**
- * stream.js — WebSocket video client + status polling + feature toggles
+ * stream.js — WebSocket video client + status polling + stream tab switching
  *
  * Architecture:
- *  - /ws/video  → binary JPEG frames rendered onto #video-canvas
- *  - /ws/events → JSON event stream (zone alarms etc.)
- *  - /api/status polled every 2s for FPS and connection health
- *  - /api/config PUT to toggle features at runtime
+ *  - /ws/video/{stream_id}  → binary JPEG frames rendered onto #video-canvas
+ *  - /ws/events/{stream_id} → JSON event stream (zone alarms etc.)
+ *  - /api/status?stream_id= polled every 2s for FPS and connection health
+ *  - /api/streams           fetched on load to render tab bar
  */
 
 const videoCanvas = document.getElementById('video-canvas');
@@ -17,6 +17,12 @@ const connLabel   = document.getElementById('conn-label');
 const fpsCounter  = document.getElementById('fps-counter');
 const clientCount = document.getElementById('client-count');
 const streamSrc   = document.getElementById('stream-source');
+const streamTabs  = document.getElementById('stream-tabs');
+
+// ── Active stream state ──────────────────────────────────────────────────────
+
+let activeStreamId = null;
+window.activeStreamId = null;  // exposed for controls.js recording calls
 
 // ── Video WebSocket ──────────────────────────────────────────────────────────
 
@@ -25,7 +31,8 @@ let reconnectTimer = null;
 
 function connectVideo() {
   clearTimeout(reconnectTimer);
-  const url = `ws://${location.host}/ws/video`;
+  const path = activeStreamId ? `/ws/video/${activeStreamId}` : '/ws/video';
+  const url = `ws://${location.host}${path}`;
   videoWs = new WebSocket(url);
   videoWs.binaryType = 'arraybuffer';
 
@@ -68,7 +75,7 @@ function renderFrame(buffer) {
 }
 
 function setConnected(connected) {
-  connDot.className   = `dot ${connected ? 'connected' : 'disconnected'}`;
+  connDot.className     = `dot ${connected ? 'connected' : 'disconnected'}`;
   connLabel.textContent = connected ? 'Connected' : 'Disconnected — retrying…';
 }
 
@@ -77,7 +84,8 @@ function setConnected(connected) {
 let eventWs = null;
 
 function connectEvents() {
-  const url = `ws://${location.host}/ws/events`;
+  const path = activeStreamId ? `/ws/events/${activeStreamId}` : '/ws/events';
+  const url = `ws://${location.host}${path}`;
   eventWs = new WebSocket(url);
 
   eventWs.onmessage = (event) => {
@@ -91,7 +99,6 @@ function connectEvents() {
 }
 
 function handleEvent(payload) {
-  // Handled by notifications.js
   window.dispatchEvent(new CustomEvent('vip:event', { detail: payload }));
 }
 
@@ -99,12 +106,76 @@ function handleEvent(payload) {
 
 async function pollStatus() {
   try {
-    const res  = await fetch('/api/status');
+    const url  = activeStreamId ? `/api/status?stream_id=${activeStreamId}` : '/api/status';
+    const res  = await fetch(url);
     const data = await res.json();
 
     fpsCounter.textContent  = `${data.actual_fps} fps`;
     clientCount.textContent = `${data.video_clients} client${data.video_clients !== 1 ? 's' : ''}`;
     streamSrc.textContent   = data.source;
+  } catch (_) {}
+}
+
+// ── Stream tab switching ──────────────────────────────────────────────────────
+
+function switchStream(streamId) {
+  if (streamId === activeStreamId) return;
+  activeStreamId = streamId;
+  window.activeStreamId = streamId;
+
+  // Update tab active state
+  streamTabs.querySelectorAll('.stream-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.streamId == streamId);
+  });
+
+  // Reconnect both sockets to the new stream
+  if (videoWs) { clearTimeout(reconnectTimer); videoWs.onclose = null; videoWs.close(); }
+  if (eventWs) { eventWs.onclose = null; eventWs.close(); }
+
+  connectVideo();
+  connectEvents();
+  pollStatus();
+
+  // Reload zones for the new stream (zone_editor.js exposes this globally)
+  window.loadZones?.();
+}
+
+function renderStreamTabs(streams) {
+  streamTabs.innerHTML = '';
+  // Only show the tab bar when there is more than one stream
+  if (streams.length <= 1) return;
+
+  streams.forEach(s => {
+    const btn = document.createElement('button');
+    btn.className = 'stream-tab';
+    btn.dataset.streamId = s.id;
+    btn.textContent = `CH${s.channel_number} · ${s.name}`;
+    btn.setAttribute('role', 'tab');
+    btn.setAttribute('aria-selected', s.id === activeStreamId);
+    btn.addEventListener('click', () => switchStream(s.id));
+    streamTabs.appendChild(btn);
+  });
+
+  // Highlight current
+  streamTabs.querySelectorAll('.stream-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.streamId == activeStreamId);
+  });
+}
+
+async function loadStreamTabs() {
+  try {
+    const res  = await fetch('/api/streams');
+    const data = await res.json();
+    // Only show streams that are enabled (have an active pipeline)
+    const running = (data.streams ?? []).filter(s => s.enabled !== false);
+
+    // Pick first running stream if none selected yet
+    if (!activeStreamId && running.length > 0) {
+      activeStreamId = running[0].id;
+      window.activeStreamId = activeStreamId;
+    }
+
+    renderStreamTabs(running);
   } catch (_) {}
 }
 
@@ -114,7 +185,9 @@ document.getElementById('btn-reconnect').addEventListener('click', () => {
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 
-connectVideo();
-connectEvents();
-setInterval(pollStatus, 2000);
-pollStatus();
+loadStreamTabs().then(() => {
+  connectVideo();
+  connectEvents();
+  setInterval(pollStatus, 2000);
+  pollStatus();
+});

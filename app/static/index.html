@@ -8,76 +8,77 @@
 </head>
 <body>
   <header>
-    <!-- Left group: hamburger + title + status -->
-    <div class="header-left">
-      <button id="btn-general-settings" class="header-icon-btn" title="General settings" aria-label="General settings">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
-        </svg>
-      </button>
-
-      <h1>VIP <span class="subtitle">Video Image Processor</span></h1>
-      <div id="status-bar">
-        <span id="conn-indicator" class="dot disconnected"></span>
-        <span id="conn-label">Connecting…</span>
-        <span class="sep">|</span>
-        <span id="fps-counter">– fps</span>
-        <span class="sep">|</span>
-        <span id="client-count">– clients</span>
-      </div>
-    </div>
-
-    <!-- Right group: action buttons -->
-    <div class="header-right">
-      <!-- Record button -->
-      <span id="record-timer"></span>
-      <button id="btn-record" class="header-icon-btn record-btn" title="Start recording" aria-label="Start / stop recording">
-        <span class="record-dot"></span>
-      </button>
-
-      <!-- Screenshot button -->
-      <button id="btn-screenshot" class="header-icon-btn screenshot-btn" title="Take screenshot" aria-label="Take screenshot">
-        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
-             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-          <circle cx="12" cy="13" r="4"/>
-        </svg>
-      </button>
-
-      <!-- Stream settings -->
-      <button id="btn-stream-settings" class="header-icon-btn" title="Stream settings" aria-label="Stream settings">
-      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+    <button id="btn-general-settings" class="header-icon-btn" title="General settings" aria-label="General settings">
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
-                 a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
-                 A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
-                 l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
-                 A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
-                 l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
-                 a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
-                 l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
-                 a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </button>
-    </div>
+        <line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/>
+      </svg>
+    </button>
+    <h1>VIP <span class="subtitle">Video Image Processor</span></h1>
+    <div id="stream-tabs" class="stream-tabs" role="tablist"></div>
   </header>
 
   <main>
-    <div id="canvas-container">
-      <canvas id="video-canvas"></canvas>
-      <canvas id="zone-canvas"></canvas>
+    <div id="video-area">
+
+      <!-- ── Stream context bar (stream-scoped) ── -->
+      <div id="stream-context-bar">
+        <!-- Left: live stats -->
+        <div class="ctx-left">
+          <span id="conn-indicator" class="dot disconnected"></span>
+          <span id="conn-label">Connecting…</span>
+          <span class="sep">|</span>
+          <span id="fps-counter">– fps</span>
+          <span class="sep">|</span>
+          <span id="client-count">– clients</span>
+          <span class="sep">|</span>
+          <span id="stream-source" class="ctx-source">–</span>
+        </div>
+        <!-- Right: stream-scoped actions -->
+        <div class="ctx-right">
+          <span id="record-timer"></span>
+          <button id="btn-reconnect" class="header-icon-btn" title="Reconnect stream" aria-label="Reconnect">
+            <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10"/>
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>
+            </svg>
+          </button>
+          <button id="btn-record" class="header-icon-btn record-btn" title="Start recording" aria-label="Start / stop recording">
+            <span class="record-dot"></span>
+          </button>
+          <button id="btn-screenshot" class="header-icon-btn screenshot-btn" title="Take screenshot" aria-label="Take screenshot">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+              <circle cx="12" cy="13" r="4"/>
+            </svg>
+          </button>
+          <button id="btn-stream-settings" class="header-icon-btn" title="Stream settings" aria-label="Stream settings">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06
+                       a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09
+                       A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83
+                       l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09
+                       A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83
+                       l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09
+                       a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83
+                       l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09
+                       a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div id="canvas-container">
+        <canvas id="video-canvas"></canvas>
+        <canvas id="zone-canvas"></canvas>
+      </div>
     </div>
 
     <aside id="controls">
-
-      <!-- ── Stream ── -->
-      <section>
-        <h2>Stream</h2>
-        <p id="stream-source">–</p>
-        <button id="btn-reconnect">Reconnect</button>
-      </section>
 
       <!-- ── Motion Tracking ── -->
       <section class="feature-section" id="section-motion">
@@ -302,6 +303,38 @@
       <div class="modal-body">
 
         <div class="modal-group">
+          <div class="modal-group-title">
+            Streams
+            <span id="gs-stream-count" class="field-hint" style="margin-left:0.5rem"></span>
+          </div>
+
+          <div id="gs-stream-list"></div>
+
+          <!-- inline add / edit form -->
+          <div id="gs-stream-form" class="stream-form hidden">
+            <div class="modal-row modal-row--col">
+              <label for="gs-sf-ch">Channel number</label>
+              <input type="number" id="gs-sf-ch" class="text-input" min="1" max="4" value="1" />
+            </div>
+            <div class="modal-row modal-row--col">
+              <label for="gs-sf-name">Channel name</label>
+              <input type="text" id="gs-sf-name" class="text-input" placeholder="e.g. Front door" spellcheck="false" />
+            </div>
+            <div class="modal-row modal-row--col">
+              <label for="gs-sf-url">Stream URL</label>
+              <input type="text" id="gs-sf-url" class="text-input" placeholder="0  or  rtsp://..." spellcheck="false" />
+              <div class="field-hint">Use <code>0</code> for the local webcam, or an RTSP / MJPEG URL.</div>
+            </div>
+            <div class="stream-form-actions">
+              <button id="btn-sf-cancel" class="btn-secondary">Cancel</button>
+              <button id="btn-sf-save">Save</button>
+            </div>
+          </div>
+
+          <button id="btn-add-stream" class="btn-secondary" style="margin-top:0.5rem">+ Add stream</button>
+        </div>
+
+        <div class="modal-group">
           <div class="modal-group-title">Recording</div>
 
           <div class="modal-row modal-row--col">
@@ -324,9 +357,11 @@
             <div class="field-hint">
               Available variables:
               <code>{project_name}</code>&nbsp;
+              <code>{channel_number}</code>&nbsp;
+              <code>{channel_slug}</code>&nbsp;
               <code>{current_date}</code>&nbsp;
               <code>{current_timestamp}</code><br/>
-              Example: <em>{project_name}_{current_timestamp}</em> → <em>vip_2026-04-21_14-31-42.mp4</em>
+              Example: <em>{project_name}_ch{channel_number}_{current_timestamp}</em> → <em>vip_ch1_2026-04-21_14-31-42.mp4</em>
             </div>
           </div>
         </div>
