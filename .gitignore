@@ -185,6 +185,7 @@ models/
 *.db-shm
 *.db-wal
 .env
+.marketing.md
 recordings/
 # Enrolled face references (contains biometric data)
 faces.json

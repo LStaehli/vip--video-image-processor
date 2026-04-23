@@ -1,12 +1,141 @@
-Copyright (c) 2026 Ludovic Staehli. All Rights Reserved.
+PolyForm Noncommercial License 1.0.0
 
-No part of this software, including its source code, documentation, assets,
-or any associated files, may be used, copied, modified, merged, published,
-distributed, sublicensed, or sold, in whole or in part, without the express
-prior written permission of the copyright holder.
+VIP - Video Image Processor
+Copyright (c) 2026 Ludovic Staehli <https://github.com/LStaehli>
 
-Unauthorized use of this software is strictly prohibited and may result in
-civil and criminal penalties.
+This software is proprietary. You may use, study, and modify it for
+noncommercial purposes only, subject to the terms below.
 
-For licensing inquiries, contact the copyright holder via GitHub:
-https://github.com/LStaehli
+---
+
+Acceptance
+
+In order to get any license under these terms, you must agree to them as
+both strict obligations and conditions to all your licenses.
+
+Copyright License
+
+The licensor grants you a copyright license for the software to do
+everything you might do with the software that would otherwise infringe
+the licensor's copyright in it, for any permitted purpose.  However, you
+may only distribute the software according to Distribution License and
+make changes or new works based on the software according to Changes and
+New Works License.
+
+Distribution License
+
+The licensor grants you an additional copyright license to distribute
+copies of the software.  Your license to distribute covers distributing
+the software with changes and new works permitted by Changes and New
+Works License.
+
+Notices
+
+You must ensure that anyone who gets a copy of any part of the software
+from you also gets a copy of these terms or the URL for them above, as
+well as copies of any plain-text lines beginning with Required Notice:
+that the licensor provided with the software.  For example:
+
+    Required Notice: Copyright (c) 2026 Ludovic Staehli
+
+Changes and New Works License
+
+The licensor grants you an additional copyright license to make changes
+and new works based on the software for any permitted purpose.
+
+Patent License
+
+The licensor grants you a patent license for the software that covers
+patent claims the licensor can license, or becomes able to license, that
+you would infringe by using the software.
+
+Noncommercial Purposes
+
+Any noncommercial purpose is a permitted purpose.
+
+Commercial purposes are not permitted purposes.  Commercial purposes
+include:
+
+  1. providing software to others as part of a commercial product or
+     service offering,
+
+  2. using the software in a way that generates revenue or reduces costs
+     for a business,
+
+  3. providing the software as a service to paying customers, and
+
+  4. internal use of the software by a for-profit organization.
+
+Personal use and use in nonprofit organizations, educational
+institutions, and government entities for their missions is always
+noncommercial.
+
+Acceptance and Compliance
+
+You accept these terms by using the software.  If you do not accept
+these terms, do not use the software.  Your license to use, copy,
+modify, or distribute the software is conditioned on your compliance with
+these terms.  Any use of the software in violation of these terms
+automatically terminates your license.
+
+Violations
+
+The licensor may not enforce its copyright against you if you are
+otherwise in compliance with these terms and you cure any violation of
+these terms within thirty days of learning of it, if you are not already
+subject to termination for a prior violation.
+
+No Other Rights
+
+These terms do not imply any licenses other than those expressly granted
+in these terms.
+
+Termination
+
+If you use the software in violation of these terms, such use is not
+licensed, and your licenses will automatically terminate.  If the
+licensor provides you with a notice of your violation, and you cease all
+violation of this license no later than 30 days after you receive that
+notice, your licenses will be reinstated retroactively.  However, if you
+violate these terms after such reinstatement, any additional violation of
+these terms will cause your licenses to terminate automatically and
+permanently.
+
+No Liability
+
+As far as the law allows, the software comes as is, without any warranty
+or condition, and the licensor will not be liable to you for any damages
+arising out of these terms or the use or nature of the software, under
+any kind of legal claim.
+
+Definitions
+
+The licensor is the entity offering these terms.
+
+The software is the software the licensor makes available under these
+terms.
+
+You refers to the individual or entity agreeing to these terms.
+
+Your company is any legal entity, sole proprietorship, or other kind of
+organization that you work for, plus all organizations that have control
+over, are under the control of, or are under common control with that
+organization.  Control means ownership of substantially all the assets of
+an entity, or the power to direct its management and legal affairs.
+
+Your licenses are all the licenses granted to you for the software under
+these terms.
+
+Use means anything you do with the software requiring one of your
+licenses.
+
+Trademark
+
+The licensor reserves all trademark and service mark rights in the
+software name and logo, if any.  You may not use any of those marks
+without the licensor's express written permission.
+
+---
+
+For commercial licensing inquiries, please contact the copyright holder
+via GitHub: https://github.com/LStaehli
