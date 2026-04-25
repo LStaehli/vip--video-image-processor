@@ -150,6 +150,15 @@ async def update_stream(stream_id: int, body: StreamUpdate):
 
     logger.info("Stream %d updated: %s", stream_id, kwargs)
 
+    # If the URL changed, update the live reader so it reconnects immediately
+    if body.url is not None:
+        stack = _get_active_stack(stream_id)
+        if stack:
+            new_url = body.url.strip()
+            source = 0 if new_url == "0" else new_url
+            stack.reader.set_source(source)
+            logger.info("Stream %d reader switched to new URL: %s", stream_id, new_url)
+
     # Sync live pipeline state when enabled flag changes
     if body.enabled is True:
         streams = await db.load_streams()

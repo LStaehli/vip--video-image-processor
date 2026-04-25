@@ -612,17 +612,21 @@ const ssQuality   = bindRange('ss-quality', 'ss-quality-val');
 
 async function openStreamSettings() {
   const sid = window.activeStreamId;
-  const statusUrl   = sid ? `/api/streams/${sid}/status` : '/api/status';
-  const configUrl   = _streamConfigUrl() ?? '/api/config';
-  const [statusRes, configRes] = await Promise.all([
+  const statusUrl = sid ? `/api/streams/${sid}/status` : '/api/status';
+  const configUrl = _streamConfigUrl() ?? '/api/config';
+  const streamsUrl = '/api/streams';
+  const [statusRes, configRes, streamsRes] = await Promise.all([
     fetch(statusUrl),
     fetch(configUrl),
+    fetch(streamsUrl),
   ]);
-  const status = await statusRes.json();
-  const config = await configRes.json();
+  const status  = await statusRes.json();
+  const config  = await configRes.json();
+  const streams = await streamsRes.json();
 
-  // Populate editable source
-  ssSource.value = config.stream_url ?? status.source ?? '';
+  // URL comes from the stream registration, not the pipeline config
+  const thisStream = (streams.streams ?? []).find(s => s.id === sid);
+  ssSource.value = thisStream?.url ?? status.source ?? '';
 
   // Populate read-only stats
   document.getElementById('ss-connected').textContent  = status.stream_connected ? 'Connected' : 'Disconnected';
@@ -651,11 +655,28 @@ document.addEventListener('keydown', (e) => {
 });
 
 btnStreamApply.addEventListener('click', async () => {
+  const sid = window.activeStreamId;
+  const newUrl = ssSource.value.trim();
+
+  // URL is a stream-registration property — must go through PATCH /api/streams/{id}
+  if (sid && newUrl) {
+    try {
+      await fetch(`/api/streams/${sid}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: newUrl }),
+      });
+    } catch (e) {
+      console.warn('Failed to update stream URL', e);
+    }
+  }
+
+  // FPS and quality are per-channel pipeline config
   await patchConfig({
-    stream_url:   ssSource.value.trim(),
     target_fps:   parseInt(ssFps.value),
     jpeg_quality: parseInt(ssQuality.value),
   });
+
   closeStreamSettings();
 });
 
