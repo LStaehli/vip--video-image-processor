@@ -344,6 +344,7 @@ class StreamConfigUpdate(BaseModel):
     face_show_landmarks: Optional[bool] = None
     face_auto_enroll: Optional[bool] = None
     face_auto_enroll_min_score: Optional[float] = None
+    notify_on_face_recognized: Optional[bool] = None
 
 
 @router.get("/{stream_id}/config")

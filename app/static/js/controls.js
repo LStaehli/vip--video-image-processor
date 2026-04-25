@@ -194,18 +194,19 @@ window.addEventListener('vip:event', (e) => {
 
 // ── Face Recognition ──────────────────────────────────────────────────────────
 
-const faceToggle      = document.getElementById('toggle-faces');
-const faceSimilarity  = document.getElementById('face-similarity');
-const faceSimilarityVal = document.getElementById('face-similarity-val');
-const faceSkip        = document.getElementById('face-skip');
-const faceSkipVal     = document.getElementById('face-skip-val');
+const faceToggle         = document.getElementById('toggle-faces');
+const faceSimilarity     = document.getElementById('face-similarity');
+const faceSimilarityVal  = document.getElementById('face-similarity-val');
+const faceSkip           = document.getElementById('face-skip');
+const faceSkipVal        = document.getElementById('face-skip-val');
 const faceLandmarks      = document.getElementById('face-landmarks');
 const faceAutoEnroll     = document.getElementById('face-auto-enroll');
 const faceAutoScore      = document.getElementById('face-auto-score');
 const faceAutoScoreVal   = document.getElementById('face-auto-score-val');
 const faceAutoScoreField = document.getElementById('face-auto-enroll-quality-field');
+const faceNotifToggle    = document.getElementById('toggle-face-notif');
 const btnEnrollFace      = document.getElementById('btn-enroll-face');
-const faceList        = document.getElementById('face-list');
+const faceList           = document.getElementById('face-list');
 
 faceToggle.addEventListener('change', () => {
   patchConfig({ enable_faces: faceToggle.checked });
@@ -232,6 +233,10 @@ faceLandmarks.addEventListener('change', () => {
 faceAutoEnroll.addEventListener('change', () => {
   patchConfig({ face_auto_enroll: faceAutoEnroll.checked });
   faceAutoScoreField.style.display = faceAutoEnroll.checked ? '' : 'none';
+});
+
+faceNotifToggle?.addEventListener('change', () => {
+  patchConfig({ notify_on_face_recognized: faceNotifToggle.checked });
 });
 
 faceAutoScore.addEventListener('input', () => {
@@ -267,9 +272,12 @@ function renderFaceList(faces) {
         <span class="face-item-meta">${date}</span>
       </div>
       <div class="face-item-actions">
+        <button class="face-notif-btn" title="Notification settings"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
         <button class="face-rename-btn" title="Rename">&#9998;</button>
         <button class="zone-delete" title="Remove">&times;</button>
       </div>`;
+
+    item.querySelector('.face-notif-btn').addEventListener('click', () => openFaceSettings(name));
 
     item.querySelector('.face-rename-btn').addEventListener('click', async () => {
       const newName = prompt(`Rename "${name}" to:`, name);
@@ -315,6 +323,66 @@ btnEnrollFace.addEventListener('click', async () => {
   } catch (e) {
     console.warn('Enrollment request failed', e);
   }
+});
+
+// ── Face notification settings modal ─────────────────────────────────────────
+
+const fsOverlay   = document.getElementById('face-settings-overlay');
+const fsFaceName  = document.getElementById('fs-face-name');
+const fsTelegram  = document.getElementById('fs-telegram-msg');
+const fsEmail     = document.getElementById('fs-email-msg');
+const btnFsSave   = document.getElementById('btn-face-settings-save');
+const btnFsCancel = document.getElementById('btn-face-settings-cancel');
+const btnFsClose  = document.getElementById('btn-face-settings-close');
+
+let _fsCurrentFace = null;
+
+function closeFaceSettings() {
+  fsOverlay.classList.add('hidden');
+  _fsCurrentFace = null;
+}
+
+async function openFaceSettings(name) {
+  _fsCurrentFace = name;
+  fsFaceName.textContent = name;
+  fsTelegram.value = '';
+  fsEmail.value    = '';
+
+  try {
+    const res  = await fetch(`/api/faces/${encodeURIComponent(name)}/settings`);
+    const data = await res.json();
+    fsTelegram.value = data.telegram_message ?? '';
+    fsEmail.value    = data.email_message    ?? '';
+  } catch (e) {
+    console.warn('[faces] failed to load face settings', e);
+  }
+
+  fsOverlay.classList.remove('hidden');
+  fsTelegram.focus();
+}
+
+btnFsSave.addEventListener('click', async () => {
+  if (!_fsCurrentFace) return;
+  try {
+    await fetch(`/api/faces/${encodeURIComponent(_fsCurrentFace)}/settings`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        telegram_message: fsTelegram.value.trim(),
+        email_message:    fsEmail.value.trim(),
+      }),
+    });
+  } catch (e) {
+    console.error('[faces] failed to save face settings', e);
+  }
+  closeFaceSettings();
+});
+
+btnFsCancel.addEventListener('click', closeFaceSettings);
+btnFsClose.addEventListener('click',  closeFaceSettings);
+fsOverlay.addEventListener('click', (e) => { if (e.target === fsOverlay) closeFaceSettings(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !fsOverlay.classList.contains('hidden')) closeFaceSettings();
 });
 
 // ── Face model loading indicator ──────────────────────────────────────────────
@@ -403,6 +471,9 @@ async function loadConfig() {
     if (data.face_auto_enroll_min_score !== undefined) {
       faceAutoScore.value = Math.round(data.face_auto_enroll_min_score * 100);
       faceAutoScoreVal.textContent = `${faceAutoScore.value}%`;
+    }
+    if (data.notify_on_face_recognized !== undefined && faceNotifToggle) {
+      faceNotifToggle.checked = data.notify_on_face_recognized;
     }
 
   } catch (e) {

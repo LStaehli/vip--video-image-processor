@@ -55,7 +55,8 @@ Raspberry Pi              Server (Python / FastAPI)                        Brows
                          │  ├─ POST     /api/streams/{id}/recording/start|stop│
                          │  ├─ GET      /api/streams/{id}/status              │
                          │  ├─ GET      /api/config                           │
-                         │  └─ GET|POST|PATCH|DELETE /api/faces               │
+                         │  ├─ GET|POST|PATCH|DELETE /api/faces               │
+                         │  └─ GET|PUT  /api/faces/{name}/settings            │
                          └────────────────────────────────────────────────────┘
 ```
 
@@ -116,6 +117,7 @@ class StreamConfig:
     enable_faces: bool = False
     zone_stop_mode: str = "zone"
     notify_on_zone_trigger: bool = False
+    notify_on_face_recognized: bool = False
     # … motion tuning, visual style, YOLO, face settings …
 
     @classmethod
@@ -185,8 +187,9 @@ Runs DeepFace face recognition with the same non-blocking load pattern as `Detec
 4. **Auto-enrollment** (optional): unknown faces above `face_auto_enroll_min_score` are enrolled with a timestamped name, a screenshot is saved, and a `face_enrolled` event is broadcast. A 3-second global cooldown prevents duplicates.
 5. Draws bounding boxes (green = known, grey = unknown), name + similarity labels, and optionally a 5-point landmark mesh.
 6. Broadcasts `face_recognized` events with a 10-second per-name cooldown.
+7. **Face notifications** (optional): when `self._cfg.notify_on_face_recognized` is true and a notifier is injected, a JPEG snapshot of the annotated frame is encoded once per detection cycle (not per face) and passed to `_notify_face()` for each recognised person. `_notify_face()` loads per-face custom message templates from the `face_notification_settings` table, resolves template variables, and calls `notify_face_recognized()` in the notification service. A 60-second per-face cooldown in the notification service prevents repeated alerts.
 
-All settings are read from `self._cfg`.
+All settings are read from `self._cfg`. The notifier is injected by the registry (`face_proc._notifier = notifier`) alongside the recorder.
 
 ---
 
@@ -204,15 +207,17 @@ All settings are read from `self._cfg`.
 | `stream_config` | Per-channel key-value config — (stream_id, key) PRIMARY KEY, value |
 | `zones` | Persisted zone definitions — id, stream_id, name, polygon (JSON), created_at |
 | `zone_settings` | Per-zone notification templates — zone_id (PK), telegram_message, email_message |
+| `face_notification_settings` | Per-face notification templates — face_name (PK), telegram_message, email_message |
 | `recordings` | Every recording session — path, start/end time, duration, trigger type and source |
 | `zone_events` | Each time motion entered a zone — zone reference, timestamp, recording FK |
 | `face_recognition_events` | Rate-limited recognition hits — face name, similarity, timestamp, recording FK |
 | `faces` | Enrolled embeddings — name (PK), BLOB, created_at, updated_at |
 
-Key operations added for multi-stream:
+Key operations:
 - `insert_stream` / `load_streams` / `update_stream` / `delete_stream` / `stream_count`
 - `load_stream_config(stream_id)` / `save_stream_config(stream_id, data)` — bulk upsert into `stream_config`
 - `get_zone_settings(zone_id)` / `upsert_zone_settings(zone_id, ...)` / `delete_zone_settings(zone_id)`
+- `get_face_notification_settings(face_name)` / `upsert_face_notification_settings(face_name, ...)` / `delete_face_notification_settings(face_name)`
 - `UNIQUE INDEX` on `streams(channel_number)` — enforced at DB level; API returns HTTP 409 on conflict.
 
 ### RecordingService
@@ -229,13 +234,20 @@ Output filenames are built from a user-configurable pattern supporting: `{projec
 
 ### NotificationService
 
-`notifications.py` dispatches Telegram messages and SMTP emails when zones are triggered.
+`notifications.py` dispatches Telegram messages and SMTP emails when zones are triggered or known faces are detected.
 
-`notify_zone_trigger(zone_name, channel_number, channel_slug, telegram_message="", email_message="")`:
-- If `telegram_message` is non-empty, uses it; otherwise falls back to the default template.
-- If `email_message` is non-empty, uses it as the email body; otherwise falls back to the default.
-- Both channels are optional; unconfigured channels are silently skipped.
-- A per-zone cooldown (global `NOTIFY_COOLDOWN` seconds) prevents alert storms.
+**`notify_zone_trigger(zone_id, zone_name, recording_path, snapshot, telegram_message="", email_message="")`**
+- Checks `settings.notify_on_zone_trigger`; returns immediately if false.
+- Enforces a per-zone cooldown using `_last_notified[zone_id]` (monotonic timestamps).
+- Sends an annotated JPEG snapshot via `sendPhoto` when available; falls back to text-only `sendMessage`.
+- Both Telegram and email channels are optional; unconfigured channels are silently skipped.
+
+**`notify_face_recognized(face_name, similarity, recording_path, snapshot, telegram_message="", email_message="")`**
+- Enforces a per-face cooldown using `_last_notified_faces[face_name]` (same `NOTIFY_COOLDOWN` value, default 60 s).
+- Same delivery logic as zone notifications: snapshot via `sendPhoto`, custom or default message, Telegram + email.
+- Called by `FaceProcessor._notify_face()` which pre-resolves template variables (`{face_name}`, `{similarity}`, `{current_timestamp}`) from the `face_notification_settings` table before invoking the service.
+
+Both functions check that at least one delivery channel is configured before attempting delivery. All network I/O is async (`httpx.AsyncClient`, `aiosmtplib`).
 
 ### FaceStore
 
@@ -267,7 +279,7 @@ Event types sent over `/ws/events/{stream_id}`:
 | `face_model_loading` | `model` | DeepFace model load begins in background thread |
 | `face_model_ready` | `model` | DeepFace model is loaded and ready |
 | `face_model_error` | `model`, `error` | DeepFace model failed to load |
-| `face_recognized` | `name`, `similarity` | Known face detected (10 s per-name cooldown) |
+| `face_recognized` | `name`, `similarity` | Known face detected (10 s per-name WS cooldown; 60 s cooldown for Telegram/email) |
 | `face_enrolled` | `name`, `created_at` | New face auto-enrolled from stream |
 
 ---
@@ -311,7 +323,7 @@ vip--video-image-processor/
 │   │   ├── config.py            # GET|PUT /api/config (global recording/notification settings)
 │   │   ├── recording.py         # POST /api/recording/start|stop|screenshot (legacy)
 │   │   ├── zones.py             # /api/zones (legacy single-stream)
-│   │   └── faces.py             # GET|POST|PATCH|DELETE /api/faces
+│   │   └── faces.py             # GET|POST|PATCH|DELETE /api/faces + GET|PUT /api/faces/{name}/settings
 │   │
 │   ├── services/
 │   │   ├── database.py          # SQLite service: schema, connection lifecycle, all DB ops
@@ -376,6 +388,9 @@ Zones are stored as 0.0–1.0 normalised points so they survive resolution chang
 
 ### Per-zone notification message templates
 Zone trigger messages support template variables resolved at notification time: `{zone_name}`, `{channel_number}`, `{channel_slug}`, `{current_timestamp}`. Templates are stored in the `zone_settings` table. If a template is empty, the default notification message is used.
+
+### Per-face notification message templates
+Face recognition alerts follow the same pattern as zone alerts. `FaceProcessor._notify_face()` fetches the per-face message templates from the `face_notification_settings` table, resolves `{face_name}`, `{similarity}`, and `{current_timestamp}`, and passes the results to `notify_face_recognized()`. Notification settings are cleaned up when a face is deleted via the API. A 60-second per-face cooldown (shared `NOTIFY_COOLDOWN` setting) prevents repeated alerts. The snapshot (annotated JPEG) is encoded once per skip-frame cycle before iterating over recognised faces, avoiding redundant encode calls when multiple known faces appear in the same frame.
 
 ### DeepFace over InsightFace
 InsightFace failed to build on macOS ARM due to missing C++ headers. DeepFace is pure Python, pip-installable on all platforms, and supports Facenet512 and ArcFace.

@@ -133,6 +133,7 @@ class StreamRegistry:
         zone_proc._recorder = recorder
         face_proc._recorder = recorder
         zone_proc._notifier = notifier
+        face_proc._notifier = notifier
 
         # ── Start ─────────────────────────────────────────────────────────────
         reader.start()

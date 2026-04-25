@@ -117,6 +117,12 @@ async def _create_schema() -> None:
             email_message    TEXT NOT NULL DEFAULT ''
         );
 
+        CREATE TABLE IF NOT EXISTS face_notification_settings (
+            face_name        TEXT PRIMARY KEY,
+            telegram_message TEXT NOT NULL DEFAULT '',
+            email_message    TEXT NOT NULL DEFAULT ''
+        );
+
         CREATE TABLE IF NOT EXISTS stream_config (
             stream_id INTEGER NOT NULL,
             key       TEXT    NOT NULL,
@@ -431,4 +437,37 @@ async def save_stream_config(stream_id: int, data: dict[str, str]) -> None:
         " ON CONFLICT(stream_id, key) DO UPDATE SET value = excluded.value",
         [(stream_id, k, v) for k, v in data.items()],
     )
+    await db.commit()
+
+
+# ── Face notification settings ────────────────────────────────────────────────
+
+async def get_face_notification_settings(face_name: str) -> dict:
+    """Return notification message settings for a face (always returns a dict)."""
+    async with get_db().execute(
+        "SELECT telegram_message, email_message FROM face_notification_settings WHERE face_name = ?",
+        (face_name,),
+    ) as cur:
+        row = await cur.fetchone()
+    if row:
+        return {"telegram_message": row["telegram_message"], "email_message": row["email_message"]}
+    return {"telegram_message": "", "email_message": ""}
+
+
+async def upsert_face_notification_settings(face_name: str, telegram_message: str, email_message: str) -> None:
+    db = get_db()
+    await db.execute(
+        """INSERT INTO face_notification_settings (face_name, telegram_message, email_message)
+           VALUES (?, ?, ?)
+           ON CONFLICT(face_name) DO UPDATE
+               SET telegram_message = excluded.telegram_message,
+                   email_message    = excluded.email_message""",
+        (face_name, telegram_message, email_message),
+    )
+    await db.commit()
+
+
+async def delete_face_notification_settings(face_name: str) -> None:
+    db = get_db()
+    await db.execute("DELETE FROM face_notification_settings WHERE face_name = ?", (face_name,))
     await db.commit()

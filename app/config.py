@@ -58,6 +58,7 @@ class StreamConfig:
     face_show_landmarks: bool = True
     face_auto_enroll: bool = False
     face_auto_enroll_min_score: float = 0.85
+    notify_on_face_recognized: bool = False
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ class StreamConfig:
             face_show_landmarks=s.face_show_landmarks,
             face_auto_enroll=s.face_auto_enroll,
             face_auto_enroll_min_score=s.face_auto_enroll_min_score,
+            notify_on_face_recognized=s.notify_on_face_recognized,
         )
 
     def to_api_dict(self) -> dict:
@@ -116,7 +118,7 @@ class StreamConfig:
             "enable_motion", "enable_zones", "enable_detection", "enable_faces",
             "motion_trail_enabled", "motion_contour_enabled", "motion_arrow_enabled",
             "motion_center_enabled", "notify_on_zone_trigger", "face_show_landmarks",
-            "face_auto_enroll",
+            "face_auto_enroll", "notify_on_face_recognized",
         }
         _INT = {
             "target_fps", "jpeg_quality", "motion_min_area", "motion_trail_length",
@@ -207,7 +209,8 @@ class Settings(BaseSettings):
 
     # Notifications — all fields optional; unconfigured channels are silently skipped
     notify_on_zone_trigger: bool = False
-    notify_cooldown: int = 60   # seconds between repeated alerts for the same zone
+    notify_on_face_recognized: bool = False
+    notify_cooldown: int = 60   # seconds between repeated alerts for the same zone/face
 
     # Telegram (optional)
     telegram_bot_token: str = ""

@@ -25,6 +25,14 @@ from app.processors.base import BaseProcessor, FrameState
 from app.services import database as db
 from app.services import face_store
 
+def _resolve_face_message(template: str, face_name: str, similarity: float) -> str:
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    return (template
+        .replace("{face_name}",         face_name)
+        .replace("{similarity}",        f"{similarity:.0%}")
+        .replace("{current_timestamp}", ts)
+    )
+
 logger = logging.getLogger(__name__)
 
 _COLOR_KNOWN   = (80,  220,  80)   # green (BGR)
@@ -66,7 +74,8 @@ class FaceProcessor(BaseProcessor):
         )
         self._last_notified: dict[str, float] = {}
         self._last_auto_enroll: float = 0.0   # monotonic timestamp of last auto-enrollment
-        self._recorder = None                  # injected from main.py
+        self._recorder = None                  # injected from registry
+        self._notifier = None                  # injected from registry
 
     # ── Public interface ──────────────────────────────────────────────────────
 
@@ -83,7 +92,12 @@ class FaceProcessor(BaseProcessor):
         self._frame_count += 1
         if self._frame_count % max(1, cfg.face_skip_frames if cfg else 3) == 0:
             self._cached = self._detect_and_recognise(frame)
-            self._emit_events(self._cached)
+            notify = cfg.notify_on_face_recognized if cfg else False
+            snapshot: bytes | None = None
+            if self._notifier and notify:
+                ok, buf = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                snapshot = buf.tobytes() if ok else None
+            self._emit_events(self._cached, snapshot=snapshot)
 
         self._draw(frame, self._cached)
         return frame
@@ -265,11 +279,12 @@ class FaceProcessor(BaseProcessor):
 
     # ── WebSocket events ──────────────────────────────────────────────────────
 
-    def _emit_events(self, results: list[FaceResult]) -> None:
+    def _emit_events(self, results: list[FaceResult], snapshot: bytes | None = None) -> None:
         if not self._ws_manager:
             return
         now = time.monotonic()
         recording_id = self._recorder.recording_id if self._recorder else None
+        recording_path = self._recorder.current_file if self._recorder else None
         for r in results:
             if r.name == "Unknown":
                 continue
@@ -286,6 +301,31 @@ class FaceProcessor(BaseProcessor):
             asyncio.ensure_future(
                 db.log_face_event(r.name, r.similarity, recording_id)
             )
+            if self._notifier and snapshot is not None:
+                asyncio.ensure_future(
+                    self._notify_face(r.name, r.similarity, recording_path, snapshot)
+                )
+
+    async def _notify_face(
+        self,
+        face_name: str,
+        similarity: float,
+        recording_path: str | None,
+        snapshot: bytes | None,
+    ) -> None:
+        """Load per-face custom messages from DB, resolve template variables, then send."""
+        face_cfg = await db.get_face_notification_settings(face_name)
+        tg_msg = face_cfg.get("telegram_message", "")
+        em_msg = face_cfg.get("email_message", "")
+        if tg_msg:
+            tg_msg = _resolve_face_message(tg_msg, face_name, similarity)
+        if em_msg:
+            em_msg = _resolve_face_message(em_msg, face_name, similarity)
+        await self._notifier.notify_face_recognized(
+            face_name, similarity, recording_path, snapshot,
+            telegram_message=tg_msg,
+            email_message=em_msg,
+        )
 
     # ── Drawing ───────────────────────────────────────────────────────────────
 

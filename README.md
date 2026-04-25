@@ -22,8 +22,9 @@ A Python web application that ingests one or more live video streams (webcam or 
 | ✅ Done | Screenshot capture — save a single annotated frame to disk at any time |
 | ✅ Done | Object detection — YOLOv8 bounding boxes with class labels and confidence scores, configurable model and class filter |
 | ✅ Done | Face recognition — Facenet512/ArcFace embeddings, manual enrollment, auto-enrollment, landmark overlay, rename |
-| ✅ Done | SQLite database — persisted streams, zones, zone settings, per-stream config, recording metadata, face recognition history |
-| ✅ Done | Notification system — Telegram and email alerts on zone trigger, with per-zone custom messages |
+| ✅ Done | Face recognition notifications — Telegram and email alerts on face detection, with per-face custom message templates and 60 s cooldown |
+| ✅ Done | SQLite database — persisted streams, zones, zone/face notification settings, per-stream config, recording metadata, face recognition history |
+| ✅ Done | Notification system — Telegram and email alerts on zone trigger or face recognition, with per-zone/per-face custom messages |
 | 🔜 Phase 5 | Polish: Docker packaging, reconnection hardening, unit tests |
 
 ---
@@ -116,7 +117,8 @@ Copy `.env.example` to `.env` and edit as needed.
 | `RECORDING_PROJECT_NAME` | `vip` | Project name used in filename patterns |
 | `RECORDING_FILENAME_PATTERN` | `{project_name}_{channel_number}_{current_timestamp}` | Filename template (see variables below) |
 | `NOTIFY_ON_ZONE_TRIGGER` | `false` | Default: send notifications on zone trigger |
-| `NOTIFY_COOLDOWN` | `60` | Seconds between repeated alerts for the same zone |
+| `NOTIFY_ON_FACE_RECOGNIZED` | `false` | Default: send notifications on face recognition |
+| `NOTIFY_COOLDOWN` | `60` | Seconds between repeated alerts for the same zone or face |
 | `TELEGRAM_BOT_TOKEN` | `` | Telegram bot token (optional) |
 | `TELEGRAM_CHAT_ID` | `` | Telegram chat/channel ID (optional) |
 | `SMTP_HOST` | `` | SMTP server hostname (optional) |
@@ -144,6 +146,7 @@ Copy `.env.example` to `.env` and edit as needed.
 | `FACE_MODEL` | `Facenet512` | Recognition model (`Facenet512` or `ArcFace`) |
 | `FACE_SIMILARITY_THRESHOLD` | `0.4` | Cosine similarity required to identify a face |
 | `FACE_SKIP_FRAMES` | `3` | Run recognition every N frames |
+| `NOTIFY_ON_FACE_RECOGNIZED` | `false` | Per-channel default: send notifications on face recognition |
 | `MOTION_MIN_AREA` | `3500` | Minimum blob area to track (px²) |
 | `MOTION_TRAIL_LENGTH` | `30` | Number of historical positions in the trail |
 | `MOTION_MOG2_THRESHOLD` | `80` | MOG2 variance threshold (sensitivity) |
@@ -386,6 +389,7 @@ Enable the **Face Recognition** toggle in the sidebar to activate face detection
 | Show landmarks | Overlay 5-point facial landmark mesh (eyes, nose, mouth corners) |
 | Auto-enroll unknown faces | Automatically enroll unknown faces that meet the quality threshold |
 | Min quality | Minimum detection confidence to trigger auto-enrollment (50–100 %) |
+| Send notifications on recognition | Enable Telegram / email alerts when a known face is detected |
 
 ### Enrolling faces manually
 
@@ -402,8 +406,25 @@ When **Auto-enroll unknown faces** is enabled, any unknown face detected above t
 
 | Action | How |
 |---|---|
+| Notification settings | Click the gear icon to set custom Telegram/email message templates for that face |
 | Rename | Click the ✎ icon, enter a new name |
 | Delete | Click the × button |
+
+### Notification settings per face
+
+Each enrolled face has a **notification settings** panel (gear icon next to the face name). You can configure custom Telegram and email message templates that are sent when that specific face is detected.
+
+Templates support the following variables:
+
+| Variable | Example output |
+|---|---|
+| `{face_name}` | `John` |
+| `{similarity}` | `92%` |
+| `{current_timestamp}` | `2026-04-24 09:15:03` |
+
+Leave a message blank to use the default notification message.
+
+> **Cooldown:** a 60-second per-face cooldown prevents alert storms during a long session. The cooldown is shared with the zone notification system and is configurable via `NOTIFY_COOLDOWN` in `.env`.
 
 ### Models
 
@@ -458,6 +479,7 @@ Configurable fields (all optional in PUT):
 | `enable_faces` | bool | Face recognition on/off |
 | `zone_stop_mode` | string | `zone` or `stream` |
 | `notify_on_zone_trigger` | bool | Zone trigger notifications on/off |
+| `notify_on_face_recognized` | bool | Face recognition notifications on/off |
 | `yolo_model` | string | YOLO weights file |
 | `yolo_confidence` | float | Detection confidence threshold |
 | `yolo_skip_frames` | int | Frames between YOLO inferences |
@@ -515,6 +537,16 @@ Configurable fields (all optional in PUT):
 
 ### Faces
 
+| Endpoint | Description |
+|---|---|
+| `GET /api/faces` | List all enrolled faces |
+| `POST /api/faces/enroll` | Enroll a face from the current frame (`name`) |
+| `PATCH /api/faces/{name}` | Rename an enrolled face (`new_name`) |
+| `DELETE /api/faces/{name}` | Delete one enrolled face (also removes notification settings) |
+| `DELETE /api/faces` | Clear all enrolled faces |
+| `GET /api/faces/{name}/settings` | Get notification message templates for a face |
+| `PUT /api/faces/{name}/settings` | Set custom Telegram/email message templates for a face |
+
 ```bash
 # List enrolled faces
 curl http://localhost:8000/api/faces
@@ -528,6 +560,14 @@ curl -X POST http://localhost:8000/api/faces/enroll \
 curl -X PATCH http://localhost:8000/api/faces/John \
   -H "Content-Type: application/json" \
   -d '{"new_name": "John Smith"}'
+
+# Get notification message templates for a face
+curl http://localhost:8000/api/faces/John/settings
+
+# Set custom notification messages for a face
+curl -X PUT http://localhost:8000/api/faces/John/settings \
+  -H "Content-Type: application/json" \
+  -d '{"telegram_message": "👤 {face_name} detected at {current_timestamp}", "email_message": ""}'
 
 # Delete a face
 curl -X DELETE http://localhost:8000/api/faces/John
@@ -595,6 +635,18 @@ TELEGRAM_CHAT_ID=-1001234567890
 ### Per-zone custom messages
 
 After setting up the bot, you can configure a **custom message template** per zone via the gear icon in the zone list. Use template variables (`{zone_name}`, `{channel_number}`, `{channel_slug}`, `{current_timestamp}`) to include dynamic context. Leave the field empty to use the default message.
+
+### Per-face custom messages
+
+Similarly, each enrolled face has a notification settings panel (gear icon in the face list). Templates support `{face_name}`, `{similarity}`, and `{current_timestamp}`. Leave blank to use the default message.
+
+### Enabling notifications
+
+Zone notifications are toggled per-channel in the **Detection Zones** panel → "Send notifications on trigger".
+
+Face notifications are toggled per-channel in the **Face Recognition** panel → "Send notifications on recognition".
+
+Both toggles persist in the per-channel database config. A single **60-second cooldown** (configurable via `NOTIFY_COOLDOWN`) applies independently per zone and per face to prevent alert storms.
 
 ---
 

@@ -499,6 +499,11 @@ textarea.text-input {
   flex-shrink: 0;
 }
 
+.disguised-link {
+  text-decoration: none;
+  color: inherit;
+}
+
 /* ── Notification list ── */
 #notif-list { display: flex; flex-direction: column; gap: 0.3rem; max-height: 160px; overflow-y: auto; }
 

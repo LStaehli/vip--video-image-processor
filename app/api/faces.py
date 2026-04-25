@@ -1,12 +1,14 @@
 """Face management API.
 
-Endpoints for enrolling, renaming, listing, and deleting face references.
+Endpoints for enrolling, renaming, listing, and deleting face references,
+plus per-face notification message settings.
 """
 import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from app.services import database as db
 from app.services import face_store
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,11 @@ class EnrollRequest(BaseModel):
 
 class RenameRequest(BaseModel):
     new_name: str
+
+
+class FaceNotifSettingsUpdate(BaseModel):
+    telegram_message: str = ""
+    email_message: str = ""
 
 
 @router.get("")
@@ -94,6 +101,7 @@ async def delete_face(name: str):
     """Remove an enrolled face by name."""
     if not face_store.remove_face(name):
         raise HTTPException(status_code=404, detail=f"No face enrolled under '{name}'")
+    await db.delete_face_notification_settings(name)
     return {"deleted": True, "name": name}
 
 
@@ -102,3 +110,18 @@ async def clear_faces():
     """Remove all enrolled faces."""
     face_store.clear()
     return {"cleared": True}
+
+
+# ── Per-face notification settings ───────────────────────────────────────────
+
+@router.get("/{name}/settings")
+async def get_face_notif_settings(name: str):
+    """Return notification message templates for a specific enrolled face."""
+    return await db.get_face_notification_settings(name)
+
+
+@router.put("/{name}/settings")
+async def update_face_notif_settings(name: str, body: FaceNotifSettingsUpdate):
+    """Save custom Telegram/email message templates for a specific enrolled face."""
+    await db.upsert_face_notification_settings(name, body.telegram_message, body.email_message)
+    return await db.get_face_notification_settings(name)

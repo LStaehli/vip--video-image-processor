@@ -283,6 +283,14 @@
             <div class="field-hint">Detection confidence required to auto-enroll</div>
           </div>
 
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-face-notif" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Send notifications on recognition</span>
+          </div>
+
           <button class="btn-secondary" id="btn-enroll-face">Enroll face…</button>
           <div id="face-list"></div>
 
@@ -631,8 +639,53 @@
     </div>
   </div>
 
+  <!-- ── Face Notification Settings Modal ── -->
+  <div id="face-settings-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Face Settings — <span id="fs-face-name"></span></h3>
+        <button class="modal-close" id="btn-face-settings-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="modal-group">
+          <div class="modal-group-title">Notification messages</div>
+          <p class="field-hint" style="margin-bottom:0.25rem">
+            These messages are sent when this face is recognised.<br>Leave blank to use the default.
+          </p>
+
+          <div class="modal-row modal-row--col">
+            <label for="fs-telegram-msg">Telegram</label>
+            <textarea id="fs-telegram-msg" class="text-input zs-textarea"
+                      placeholder="Face recognised: {face_name} ({similarity})"
+                      rows="3" spellcheck="false"></textarea>
+          </div>
+
+          <div class="modal-row modal-row--col">
+            <label for="fs-email-msg">Email</label>
+            <textarea id="fs-email-msg" class="text-input zs-textarea"
+                      placeholder="Face recognised: {face_name} ({similarity})"
+                      rows="3" spellcheck="false"></textarea>
+          </div>
+
+          <p class="field-hint" style="margin-top:0.25rem">
+            Available variables: <code>{face_name}</code>&nbsp;<code>{similarity}</code><br>
+            <code>{current_timestamp}</code>
+          </p>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-face-settings-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-face-settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+
   <footer id="app-footer">
-    &copy; 2026 Ludovic Staehli &mdash; All Rights Reserved
+    &copy; 2026&nbsp;<a href="https://github.com/LStaehli" class="disguised-link" target="_blank">Ludovic Staehli</a>&nbsp;&mdash; All Rights Reserved
   </footer>
 
   <script src="/js/stream.js"></script>
