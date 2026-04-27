@@ -653,18 +653,36 @@ textarea.text-input {
   flex-shrink: 0;
 }
 
-.face-rename-btn {
+/* Shared base for all face-item action buttons (bell, gear, pencil, delete) */
+.face-item-btn {
   background: none;
   border: none;
   color: var(--muted);
+  display: flex;
+  align-items: center;
   font-size: 0.85rem;
   line-height: 1;
-  padding: 0 0.2rem;
+  padding: 0.1rem 0.25rem;
   margin: 0;
   cursor: pointer;
-  align-self: auto;
+  transition: color 0.15s, opacity 0.15s;
 }
-.face-rename-btn:hover { color: var(--accent); opacity: 1; }
+.face-item-btn:hover { color: var(--accent); }
+
+/* Bell: dimmed when notifications are off, accent-coloured when on */
+.face-bell-btn { opacity: 0.35; }
+.face-bell-btn.active { color: var(--accent); opacity: 1; }
+.face-bell-btn:hover  { opacity: 1; }
+
+/* Face section action buttons row */
+.face-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+.face-actions .btn-secondary {
+  flex: 1;
+}
 
 /* "Cancel" state for Draw zone button */
 .btn-secondary.btn-drawing {

@@ -38,7 +38,13 @@ logger = logging.getLogger(__name__)
 _COLOR_KNOWN   = (80,  220,  80)   # green (BGR)
 _COLOR_UNKNOWN = (130, 130, 130)   # grey  (BGR)
 
-_NOTIF_COOLDOWN = 10.0  # seconds between repeated alerts for the same person
+_NOTIF_COOLDOWN = 10.0        # seconds between repeated alerts for the same person
+_AUTO_ENROLL_COOLDOWN = 30.0  # seconds between auto-enrollments (was 3 s — too short)
+# Fraction of the recognition threshold used for dedup: a face scoring above
+# (threshold × factor) is "close enough" to an existing profile and must NOT
+# create a new one.  Catches the same face at a slightly different angle that
+# falls just below the strict recognition threshold.
+_AUTO_ENROLL_DEDUP_FACTOR = 0.75
 
 
 @dataclass
@@ -230,12 +236,19 @@ class FaceProcessor(BaseProcessor):
                     best_sim = sim
                     best_name = ref_name if sim >= threshold else "Unknown"
 
-            # Auto-enroll: unknown face with sufficient quality
+            # Auto-enroll: unknown face with sufficient quality.
+            # Two-level deduplication:
+            #   1. dedup_threshold (= recognition threshold × 0.75) — skip enrollment
+            #      when the face is "close but not quite" to an existing profile,
+            #      which happens when pose/lighting varies slightly.
+            #   2. 30-second cooldown — prevents a face that stays in frame from
+            #      being enrolled multiple times across consecutive frames.
+            dedup_threshold = threshold * _AUTO_ENROLL_DEDUP_FACTOR
             if (
-                best_name == "Unknown"
+                best_sim < dedup_threshold
                 and (cfg.face_auto_enroll if cfg else False)
                 and det_score >= (cfg.face_auto_enroll_min_score if cfg else 0.85)
-                and time.monotonic() - self._last_auto_enroll >= 3.0
+                and time.monotonic() - self._last_auto_enroll >= _AUTO_ENROLL_COOLDOWN
             ):
                 auto_name = f"face_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
                 created_at = face_store.add_face(auto_name, emb)
@@ -313,8 +326,10 @@ class FaceProcessor(BaseProcessor):
         recording_path: str | None,
         snapshot: bytes | None,
     ) -> None:
-        """Load per-face custom messages from DB, resolve template variables, then send."""
+        """Load per-face settings from DB; skip if notifications disabled for this face."""
         face_cfg = await db.get_face_notification_settings(face_name)
+        if not face_cfg.get("notify_enabled", True):
+            return
         tg_msg = face_cfg.get("telegram_message", "")
         em_msg = face_cfg.get("email_message", "")
         if tg_msg:

@@ -32,6 +32,7 @@ class RenameRequest(BaseModel):
 
 
 class FaceNotifSettingsUpdate(BaseModel):
+    notify_enabled: bool = True
     telegram_message: str = ""
     email_message: str = ""
 
@@ -93,6 +94,8 @@ async def rename_face(name: str, body: RenameRequest):
             status_code=404 if name not in face_store.face_names() else 409,
             detail=f"'{name}' not found" if name not in face_store.face_names() else f"'{new_name}' is already enrolled",
         )
+    # Carry notification settings over to the new name
+    await db.rename_face_notification_settings(name, new_name)
     return {"renamed": True, "old_name": name, "new_name": new_name}
 
 
@@ -114,14 +117,22 @@ async def clear_faces():
 
 # ── Per-face notification settings ───────────────────────────────────────────
 
+@router.get("/settings")
+async def get_all_face_notif_settings():
+    """Return notification settings for every enrolled face, keyed by name."""
+    return await db.get_all_face_notification_settings()
+
+
 @router.get("/{name}/settings")
 async def get_face_notif_settings(name: str):
-    """Return notification message templates for a specific enrolled face."""
+    """Return notification settings for a specific enrolled face."""
     return await db.get_face_notification_settings(name)
 
 
 @router.put("/{name}/settings")
 async def update_face_notif_settings(name: str, body: FaceNotifSettingsUpdate):
-    """Save custom Telegram/email message templates for a specific enrolled face."""
-    await db.upsert_face_notification_settings(name, body.telegram_message, body.email_message)
+    """Save notification toggle and message templates for a specific enrolled face."""
+    await db.upsert_face_notification_settings(
+        name, body.notify_enabled, body.telegram_message, body.email_message
+    )
     return await db.get_face_notification_settings(name)

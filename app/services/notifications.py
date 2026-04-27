@@ -52,9 +52,6 @@ async def notify_zone_trigger(
         email_message:     Custom message body for email (already resolved).
                            Falls back to the default when empty.
     """
-    if not settings.notify_on_zone_trigger:
-        return
-
     now = time.monotonic()
     if now - _last_notified.get(zone_id, 0.0) < settings.notify_cooldown:
         logger.debug("Notification suppressed for zone '%s' (cooldown)", zone_name)

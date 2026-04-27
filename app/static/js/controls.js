@@ -195,70 +195,144 @@ window.addEventListener('vip:event', (e) => {
 // ── Face Recognition ──────────────────────────────────────────────────────────
 
 const faceToggle         = document.getElementById('toggle-faces');
-const faceSimilarity     = document.getElementById('face-similarity');
-const faceSimilarityVal  = document.getElementById('face-similarity-val');
-const faceSkip           = document.getElementById('face-skip');
-const faceSkipVal        = document.getElementById('face-skip-val');
+const faceNotifToggle    = document.getElementById('toggle-face-notif');
+const faceList           = document.getElementById('face-list');
+const btnEnrollFace      = document.getElementById('btn-enroll-face');
+
+// Face config modal elements (inside #face-config-overlay)
+const faceModel          = document.getElementById('face-model');
+const faceSimilarity     = bindRange('face-similarity', 'face-similarity-val');
+const faceSkip           = bindRange('face-skip',       'face-skip-val');
 const faceLandmarks      = document.getElementById('face-landmarks');
 const faceAutoEnroll     = document.getElementById('face-auto-enroll');
-const faceAutoScore      = document.getElementById('face-auto-score');
-const faceAutoScoreVal   = document.getElementById('face-auto-score-val');
+const faceAutoScore      = bindRange('face-auto-score', 'face-auto-score-val');
 const faceAutoScoreField = document.getElementById('face-auto-enroll-quality-field');
-const faceNotifToggle    = document.getElementById('toggle-face-notif');
-const btnEnrollFace      = document.getElementById('btn-enroll-face');
-const faceList           = document.getElementById('face-list');
 
 faceToggle.addEventListener('change', () => {
   patchConfig({ enable_faces: faceToggle.checked });
-});
-
-faceSimilarity.addEventListener('input', () => {
-  faceSimilarityVal.textContent = `${faceSimilarity.value}%`;
-});
-faceSimilarity.addEventListener('input', debounce(() => {
-  patchConfig({ face_similarity_threshold: parseInt(faceSimilarity.value) / 100 });
-}, DEBOUNCE_MS));
-
-faceSkip.addEventListener('input', () => {
-  faceSkipVal.textContent = `${faceSkip.value}f`;
-});
-faceSkip.addEventListener('input', debounce(() => {
-  patchConfig({ face_skip_frames: parseInt(faceSkip.value) });
-}, DEBOUNCE_MS));
-
-faceLandmarks.addEventListener('change', () => {
-  patchConfig({ face_show_landmarks: faceLandmarks.checked });
-});
-
-faceAutoEnroll.addEventListener('change', () => {
-  patchConfig({ face_auto_enroll: faceAutoEnroll.checked });
-  faceAutoScoreField.style.display = faceAutoEnroll.checked ? '' : 'none';
 });
 
 faceNotifToggle?.addEventListener('change', () => {
   patchConfig({ notify_on_face_recognized: faceNotifToggle.checked });
 });
 
-faceAutoScore.addEventListener('input', () => {
-  faceAutoScoreVal.textContent = `${faceAutoScore.value}%`;
+// Show/hide quality threshold when auto-enroll is toggled inside the modal
+faceAutoEnroll.addEventListener('change', () => {
+  faceAutoScoreField.style.display = faceAutoEnroll.checked ? '' : 'none';
 });
-faceAutoScore.addEventListener('input', debounce(() => {
-  patchConfig({ face_auto_enroll_min_score: parseInt(faceAutoScore.value) / 100 });
-}, DEBOUNCE_MS));
+
+// ── Face Config Modal ─────────────────────────────────────────────────────────
+
+const faceConfigOverlay   = document.getElementById('face-config-overlay');
+const btnFaceConfig       = document.getElementById('btn-face-config');
+const btnFaceConfigClose  = document.getElementById('btn-face-config-close');
+const btnFaceConfigCancel = document.getElementById('btn-face-config-cancel');
+const btnFaceConfigApply  = document.getElementById('btn-face-config-apply');
+
+async function openFaceConfig() {
+  const url = _streamConfigUrl();
+  if (!url) return;
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.face_model)                  faceModel.value    = data.face_model;
+    if (data.face_similarity_threshold !== undefined) {
+      faceSimilarity.value = Math.round(data.face_similarity_threshold * 100);
+      document.getElementById('face-similarity-val').textContent = `${faceSimilarity.value}%`;
+    }
+    if (data.face_skip_frames !== undefined) {
+      faceSkip.value = data.face_skip_frames;
+      document.getElementById('face-skip-val').textContent = `${faceSkip.value}f`;
+    }
+    if (data.face_show_landmarks !== undefined)  faceLandmarks.checked  = data.face_show_landmarks;
+    if (data.face_auto_enroll    !== undefined) {
+      faceAutoEnroll.checked = data.face_auto_enroll;
+      faceAutoScoreField.style.display = data.face_auto_enroll ? '' : 'none';
+    }
+    if (data.face_auto_enroll_min_score !== undefined) {
+      faceAutoScore.value = Math.round(data.face_auto_enroll_min_score * 100);
+      document.getElementById('face-auto-score-val').textContent = `${faceAutoScore.value}%`;
+    }
+  } catch (e) {
+    console.warn('[face-config] failed to load config', e);
+  }
+  faceConfigOverlay.classList.remove('hidden');
+}
+
+function closeFaceConfig() {
+  faceConfigOverlay.classList.add('hidden');
+}
+
+btnFaceConfig.addEventListener('click', openFaceConfig);
+btnFaceConfigClose.addEventListener('click', closeFaceConfig);
+btnFaceConfigCancel.addEventListener('click', closeFaceConfig);
+faceConfigOverlay.addEventListener('click', (e) => { if (e.target === faceConfigOverlay) closeFaceConfig(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !faceConfigOverlay.classList.contains('hidden')) closeFaceConfig();
+});
+
+btnFaceConfigApply.addEventListener('click', async () => {
+  await patchConfig({
+    face_model:                   faceModel.value,
+    face_similarity_threshold:    parseInt(faceSimilarity.value) / 100,
+    face_skip_frames:             parseInt(faceSkip.value),
+    face_show_landmarks:          faceLandmarks.checked,
+    face_auto_enroll:             faceAutoEnroll.checked,
+    face_auto_enroll_min_score:   parseInt(faceAutoScore.value) / 100,
+  });
+  closeFaceConfig();
+});
+
+// ── Face Profiles Modal ───────────────────────────────────────────────────────
+
+const faceProfilesOverlay  = document.getElementById('face-profiles-overlay');
+const btnFaceProfiles      = document.getElementById('btn-face-profiles');
+const btnFaceProfilesClose = document.getElementById('btn-face-profiles-close');
+const btnFaceProfilesDone  = document.getElementById('btn-face-profiles-done');
+
+async function openFaceProfiles() {
+  await loadFaceList();
+  faceProfilesOverlay.classList.remove('hidden');
+}
+
+function closeFaceProfiles() {
+  faceProfilesOverlay.classList.add('hidden');
+}
+
+btnFaceProfiles.addEventListener('click', openFaceProfiles);
+btnFaceProfilesClose.addEventListener('click', closeFaceProfiles);
+btnFaceProfilesDone.addEventListener('click',  closeFaceProfiles);
+faceProfilesOverlay.addEventListener('click', (e) => { if (e.target === faceProfilesOverlay) closeFaceProfiles(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !faceProfilesOverlay.classList.contains('hidden')) closeFaceProfiles();
+});
 
 async function loadFaceList() {
   try {
-    const res  = await fetch('/api/faces');
-    const data = await res.json();
-    renderFaceList(data.faces ?? []);
+    const [facesRes, settingsRes] = await Promise.all([
+      fetch('/api/faces'),
+      fetch('/api/faces/settings'),
+    ]);
+    const { faces = [] }  = await facesRes.json();
+    const allSettings     = await settingsRes.json();
+    renderFaceList(faces, allSettings);
   } catch (e) {
     console.warn('Failed to load face list', e);
   }
 }
 
-function renderFaceList(faces) {
+const _BELL_ON_SVG  = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`;
+const _BELL_OFF_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
+
+function renderFaceList(faces, allSettings = {}) {
   faceList.innerHTML = '';
+  if (faces.length === 0) {
+    faceList.innerHTML = '<p class="field-hint" style="margin-top:0.5rem">No faces enrolled yet.</p>';
+    return;
+  }
   faces.forEach(({ name, created_at }) => {
+    const notifSettings  = allSettings[name] ?? {};
+    const notifyEnabled  = notifSettings.notify_enabled !== false; // default true
     const item = document.createElement('div');
     item.className = 'face-item';
 
@@ -272,10 +346,32 @@ function renderFaceList(faces) {
         <span class="face-item-meta">${date}</span>
       </div>
       <div class="face-item-actions">
-        <button class="face-notif-btn" title="Notification settings"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
-        <button class="face-rename-btn" title="Rename">&#9998;</button>
-        <button class="zone-delete" title="Remove">&times;</button>
+        <button class="face-item-btn face-bell-btn ${notifyEnabled ? 'active' : ''}" title="${notifyEnabled ? 'Notifications on — click to disable' : 'Notifications off — click to enable'}">${notifyEnabled ? _BELL_ON_SVG : _BELL_OFF_SVG}</button>
+        <button class="face-item-btn face-notif-btn" title="Notification settings"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+        <button class="face-item-btn face-rename-btn" title="Rename">&#9998;</button>
+        <button class="face-item-btn zone-delete" title="Remove">&times;</button>
       </div>`;
+
+    // Bell: instant toggle of notify_enabled without opening modal
+    item.querySelector('.face-bell-btn').addEventListener('click', async (e) => {
+      const btn     = e.currentTarget;
+      const isOn    = btn.classList.contains('active');
+      const newVal  = !isOn;
+      btn.classList.toggle('active', newVal);
+      btn.innerHTML = newVal ? _BELL_ON_SVG : _BELL_OFF_SVG;
+      btn.title     = newVal ? 'Notifications on — click to disable' : 'Notifications off — click to enable';
+      // Preserve existing message templates while toggling
+      const cur = await fetch(`/api/faces/${encodeURIComponent(name)}/settings`).then(r => r.json()).catch(() => ({}));
+      await fetch(`/api/faces/${encodeURIComponent(name)}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          notify_enabled:   newVal,
+          telegram_message: cur.telegram_message ?? '',
+          email_message:    cur.email_message    ?? '',
+        }),
+      });
+    });
 
     item.querySelector('.face-notif-btn').addEventListener('click', () => openFaceSettings(name));
 
@@ -327,13 +423,14 @@ btnEnrollFace.addEventListener('click', async () => {
 
 // ── Face notification settings modal ─────────────────────────────────────────
 
-const fsOverlay   = document.getElementById('face-settings-overlay');
-const fsFaceName  = document.getElementById('fs-face-name');
-const fsTelegram  = document.getElementById('fs-telegram-msg');
-const fsEmail     = document.getElementById('fs-email-msg');
-const btnFsSave   = document.getElementById('btn-face-settings-save');
-const btnFsCancel = document.getElementById('btn-face-settings-cancel');
-const btnFsClose  = document.getElementById('btn-face-settings-close');
+const fsOverlay        = document.getElementById('face-settings-overlay');
+const fsFaceName       = document.getElementById('fs-face-name');
+const fsNotifyEnabled  = document.getElementById('fs-notify-enabled');
+const fsTelegram       = document.getElementById('fs-telegram-msg');
+const fsEmail          = document.getElementById('fs-email-msg');
+const btnFsSave        = document.getElementById('btn-face-settings-save');
+const btnFsCancel      = document.getElementById('btn-face-settings-cancel');
+const btnFsClose       = document.getElementById('btn-face-settings-close');
 
 let _fsCurrentFace = null;
 
@@ -344,15 +441,17 @@ function closeFaceSettings() {
 
 async function openFaceSettings(name) {
   _fsCurrentFace = name;
-  fsFaceName.textContent = name;
-  fsTelegram.value = '';
-  fsEmail.value    = '';
+  fsFaceName.textContent  = name;
+  fsNotifyEnabled.checked = true;
+  fsTelegram.value        = '';
+  fsEmail.value           = '';
 
   try {
     const res  = await fetch(`/api/faces/${encodeURIComponent(name)}/settings`);
     const data = await res.json();
-    fsTelegram.value = data.telegram_message ?? '';
-    fsEmail.value    = data.email_message    ?? '';
+    fsNotifyEnabled.checked = data.notify_enabled !== false;
+    fsTelegram.value        = data.telegram_message ?? '';
+    fsEmail.value           = data.email_message    ?? '';
   } catch (e) {
     console.warn('[faces] failed to load face settings', e);
   }
@@ -368,6 +467,7 @@ btnFsSave.addEventListener('click', async () => {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        notify_enabled:   fsNotifyEnabled.checked,
         telegram_message: fsTelegram.value.trim(),
         email_message:    fsEmail.value.trim(),
       }),
@@ -375,6 +475,8 @@ btnFsSave.addEventListener('click', async () => {
   } catch (e) {
     console.error('[faces] failed to save face settings', e);
   }
+  // Refresh the profiles list so the bell icon reflects the new state
+  loadFaceList();
   closeFaceSettings();
 });
 
@@ -403,7 +505,7 @@ window.addEventListener('vip:event', (e) => {
   } else if (type === 'face_recognized') {
     console.info(`Face recognised: ${name} (${Math.round((similarity ?? 0) * 100)}%)`);
   } else if (type === 'face_enrolled') {
-    // Auto-enrolled — refresh the list so the new entry appears immediately
+    // Auto-enrolled — refresh the list; if the profiles modal is open it updates live
     loadFaceList();
   }
 });
@@ -451,27 +553,8 @@ async function loadConfig() {
     }
     if (data.detect_classes !== undefined) detClasses.value = data.detect_classes;
 
-    // Face recognition
+    // Face recognition — sidebar toggles only; modal fields populate on open
     faceToggle.checked = data.enable_faces ?? false;
-    if (data.face_similarity_threshold !== undefined) {
-      faceSimilarity.value = Math.round(data.face_similarity_threshold * 100);
-      faceSimilarityVal.textContent = `${faceSimilarity.value}%`;
-    }
-    if (data.face_skip_frames !== undefined) {
-      faceSkip.value = data.face_skip_frames;
-      faceSkipVal.textContent = `${data.face_skip_frames}f`;
-    }
-    if (data.face_show_landmarks !== undefined) {
-      faceLandmarks.checked = data.face_show_landmarks;
-    }
-    if (data.face_auto_enroll !== undefined) {
-      faceAutoEnroll.checked = data.face_auto_enroll;
-      faceAutoScoreField.style.display = data.face_auto_enroll ? '' : 'none';
-    }
-    if (data.face_auto_enroll_min_score !== undefined) {
-      faceAutoScore.value = Math.round(data.face_auto_enroll_min_score * 100);
-      faceAutoScoreVal.textContent = `${faceAutoScore.value}%`;
-    }
     if (data.notify_on_face_recognized !== undefined && faceNotifToggle) {
       faceNotifToggle.checked = data.notify_on_face_recognized;
     }
@@ -483,7 +566,6 @@ async function loadConfig() {
 
 window.loadConfig = loadConfig;  // called by stream.js on tab switch
 // loadConfig() is called by stream.js after activeStreamId is set
-loadFaceList();
 
 
 // ── Visual Settings Modal ─────────────────────────────────────────────────────

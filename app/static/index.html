@@ -240,49 +240,6 @@
             <span id="face-loading-label">Loading model…</span>
           </div>
 
-          <div class="field">
-            <div class="field-row">
-              <label for="face-similarity">Match threshold</label>
-              <span class="field-value" id="face-similarity-val"></span>
-            </div>
-            <input type="range" id="face-similarity" min="10" max="90" step="5" />
-            <div class="field-hint">Minimum cosine similarity to identify a face — higher = stricter</div>
-          </div>
-
-          <div class="field">
-            <div class="field-row">
-              <label for="face-skip">Run every</label>
-              <span class="field-value" id="face-skip-val"></span>
-            </div>
-            <input type="range" id="face-skip" min="1" max="10" step="1" />
-            <div class="field-hint">Frames between recognition calls</div>
-          </div>
-
-          <label class="toggle-row">
-            <label class="toggle-switch">
-              <input type="checkbox" id="face-landmarks" />
-              <span class="slider"></span>
-            </label>
-            <span class="toggle-label">Show landmarks</span>
-          </label>
-
-          <label class="toggle-row">
-            <label class="toggle-switch">
-              <input type="checkbox" id="face-auto-enroll" />
-              <span class="slider"></span>
-            </label>
-            <span class="toggle-label">Auto-enroll unknown faces</span>
-          </label>
-
-          <div class="field" id="face-auto-enroll-quality-field">
-            <div class="field-row">
-              <label for="face-auto-score">Min quality</label>
-              <span class="field-value" id="face-auto-score-val"></span>
-            </div>
-            <input type="range" id="face-auto-score" min="50" max="100" step="5" />
-            <div class="field-hint">Detection confidence required to auto-enroll</div>
-          </div>
-
           <div class="toggle-row">
             <label class="toggle-switch">
               <input type="checkbox" id="toggle-face-notif" />
@@ -292,7 +249,11 @@
           </div>
 
           <button class="btn-secondary" id="btn-enroll-face">Enroll face…</button>
-          <div id="face-list"></div>
+
+          <div class="face-actions">
+            <button class="btn-secondary" id="btn-face-config">Recognition settings…</button>
+            <button class="btn-secondary" id="btn-face-profiles">Face profiles…</button>
+          </div>
 
         </div>
       </section>
@@ -639,6 +600,109 @@
     </div>
   </div>
 
+  <!-- ── Face Recognition Config Modal ── -->
+  <div id="face-config-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Face Recognition — Settings</h3>
+        <button class="modal-close" id="btn-face-config-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+
+        <div class="modal-group">
+          <div class="modal-group-title">Model</div>
+          <div class="modal-row modal-row--col">
+            <label for="face-model">Recognition model</label>
+            <select id="face-model" class="select-input">
+              <option value="Facenet512">Facenet512 — faster</option>
+              <option value="ArcFace">ArcFace — most accurate</option>
+            </select>
+            <div class="field-hint">Changing the model triggers an automatic download and reload. ArcFace produces more stable embeddings across different poses and lighting conditions.</div>
+          </div>
+        </div>
+
+        <div class="modal-group">
+          <div class="modal-group-title">Recognition tuning</div>
+          <div class="modal-row">
+            <label for="face-similarity">Match threshold</label>
+            <div class="range-with-value">
+              <input type="range" id="face-similarity" min="10" max="90" step="5" />
+              <span class="field-value" id="face-similarity-val"></span>
+            </div>
+          </div>
+          <div class="field-hint" style="margin-top:-0.25rem">Minimum cosine similarity to identify a face — higher = stricter</div>
+
+          <div class="modal-row" style="margin-top:0.75rem">
+            <label for="face-skip">Run every</label>
+            <div class="range-with-value">
+              <input type="range" id="face-skip" min="1" max="10" step="1" />
+              <span class="field-value" id="face-skip-val"></span>
+            </div>
+          </div>
+          <div class="field-hint" style="margin-top:-0.25rem">Frames between recognition calls — higher = faster stream</div>
+        </div>
+
+        <div class="modal-group">
+          <div class="modal-group-title">Display</div>
+          <div class="modal-row">
+            <label for="face-landmarks">Show landmarks</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="face-landmarks" />
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <div class="modal-group">
+          <div class="modal-group-title">Auto-enroll</div>
+          <div class="modal-row">
+            <label for="face-auto-enroll">Auto-enroll unknown faces</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="face-auto-enroll" />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <div id="face-auto-enroll-quality-field">
+            <div class="modal-row" style="margin-top:0.5rem">
+              <label for="face-auto-score">Min quality</label>
+              <div class="range-with-value">
+                <input type="range" id="face-auto-score" min="50" max="100" step="5" />
+                <span class="field-value" id="face-auto-score-val"></span>
+              </div>
+            </div>
+            <div class="field-hint" style="margin-top:-0.25rem">Detection confidence required to auto-enroll a new face</div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-face-config-cancel" class="btn-secondary">Cancel</button>
+        <button id="btn-face-config-apply">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Face Profiles Modal ── -->
+  <div id="face-profiles-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Face Profiles</h3>
+        <button class="modal-close" id="btn-face-profiles-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="field-hint" style="margin-bottom:0.5rem">Enrolled faces used for recognition. Click the gear icon to set per-face notification messages.</p>
+        <div id="face-list"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-face-profiles-done">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Face Notification Settings Modal ── -->
   <div id="face-settings-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
     <div class="modal">
@@ -648,6 +712,18 @@
       </div>
 
       <div class="modal-body">
+
+        <div class="modal-group">
+          <div class="modal-group-title">Alert</div>
+          <div class="modal-row">
+            <label for="fs-notify-enabled">Notify when recognized</label>
+            <label class="toggle-switch">
+              <input type="checkbox" id="fs-notify-enabled" checked />
+              <span class="slider"></span>
+            </label>
+          </div>
+          <p class="field-hint" style="margin-top:0.25rem">Requires the master "Send notifications on recognition" switch to be enabled.</p>
+        </div>
 
         <div class="modal-group">
           <div class="modal-group-title">Notification messages</div>

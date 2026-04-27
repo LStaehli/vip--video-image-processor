@@ -119,6 +119,7 @@ async def _create_schema() -> None:
 
         CREATE TABLE IF NOT EXISTS face_notification_settings (
             face_name        TEXT PRIMARY KEY,
+            notify_enabled   INTEGER NOT NULL DEFAULT 1,
             telegram_message TEXT NOT NULL DEFAULT '',
             email_message    TEXT NOT NULL DEFAULT ''
         );
@@ -152,6 +153,16 @@ async def _migrate() -> None:
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_streams_channel_number ON streams(channel_number)"
     )
     await db.commit()
+
+    # face_notification_settings.notify_enabled — added to allow per-face alert toggle
+    async with db.execute("PRAGMA table_info(face_notification_settings)") as cur:
+        face_notif_cols = {row[1] for row in await cur.fetchall()}
+    if "notify_enabled" not in face_notif_cols and face_notif_cols:
+        await db.execute(
+            "ALTER TABLE face_notification_settings ADD COLUMN notify_enabled INTEGER NOT NULL DEFAULT 1"
+        )
+        await db.commit()
+        logger.info("Migration applied: face_notification_settings.notify_enabled")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -443,26 +454,62 @@ async def save_stream_config(stream_id: int, data: dict[str, str]) -> None:
 # ── Face notification settings ────────────────────────────────────────────────
 
 async def get_face_notification_settings(face_name: str) -> dict:
-    """Return notification message settings for a face (always returns a dict)."""
+    """Return notification settings for a face (always returns a dict with defaults)."""
     async with get_db().execute(
-        "SELECT telegram_message, email_message FROM face_notification_settings WHERE face_name = ?",
+        "SELECT notify_enabled, telegram_message, email_message FROM face_notification_settings WHERE face_name = ?",
         (face_name,),
     ) as cur:
         row = await cur.fetchone()
     if row:
-        return {"telegram_message": row["telegram_message"], "email_message": row["email_message"]}
-    return {"telegram_message": "", "email_message": ""}
+        return {
+            "notify_enabled":   bool(row["notify_enabled"]),
+            "telegram_message": row["telegram_message"],
+            "email_message":    row["email_message"],
+        }
+    return {"notify_enabled": True, "telegram_message": "", "email_message": ""}
 
 
-async def upsert_face_notification_settings(face_name: str, telegram_message: str, email_message: str) -> None:
+async def get_all_face_notification_settings() -> dict[str, dict]:
+    """Return all face notification settings keyed by face_name."""
+    async with get_db().execute(
+        "SELECT face_name, notify_enabled, telegram_message, email_message FROM face_notification_settings"
+    ) as cur:
+        rows = await cur.fetchall()
+    return {
+        r["face_name"]: {
+            "notify_enabled":   bool(r["notify_enabled"]),
+            "telegram_message": r["telegram_message"],
+            "email_message":    r["email_message"],
+        }
+        for r in rows
+    }
+
+
+async def upsert_face_notification_settings(
+    face_name: str,
+    notify_enabled: bool,
+    telegram_message: str,
+    email_message: str,
+) -> None:
     db = get_db()
     await db.execute(
-        """INSERT INTO face_notification_settings (face_name, telegram_message, email_message)
-           VALUES (?, ?, ?)
+        """INSERT INTO face_notification_settings (face_name, notify_enabled, telegram_message, email_message)
+           VALUES (?, ?, ?, ?)
            ON CONFLICT(face_name) DO UPDATE
-               SET telegram_message = excluded.telegram_message,
+               SET notify_enabled   = excluded.notify_enabled,
+                   telegram_message = excluded.telegram_message,
                    email_message    = excluded.email_message""",
-        (face_name, telegram_message, email_message),
+        (face_name, int(notify_enabled), telegram_message, email_message),
+    )
+    await db.commit()
+
+
+async def rename_face_notification_settings(old_name: str, new_name: str) -> None:
+    """Carry notification settings over when a face is renamed."""
+    db = get_db()
+    await db.execute(
+        "UPDATE face_notification_settings SET face_name = ? WHERE face_name = ?",
+        (new_name, old_name),
     )
     await db.commit()
 

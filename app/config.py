@@ -200,7 +200,7 @@ class Settings(BaseSettings):
 
     # Face recognition
     enable_faces: bool = False
-    face_model: str = "Facenet512"          # Facenet512 (fast) or ArcFace (most accurate)
+    face_model: str = "ArcFace"          # Facenet512 (fast) or ArcFace (most accurate)
     face_similarity_threshold: float = 0.4  # cosine similarity — higher = stricter
     face_skip_frames: int = 3
     face_show_landmarks: bool = True        # overlay eye/nose/mouth points and lines
