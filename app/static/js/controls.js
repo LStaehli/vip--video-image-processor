@@ -559,6 +559,19 @@ async function loadConfig() {
       faceNotifToggle.checked = data.notify_on_face_recognized;
     }
 
+    // License plates
+    if (data.enable_plates !== undefined) platesToggle.checked = data.enable_plates;
+    if (data.plate_confidence !== undefined) {
+      plateConfidence.value = Math.round(data.plate_confidence * 100);
+      plateConfidenceVal.textContent = `${plateConfidence.value}%`;
+    }
+    if (data.plate_skip_frames !== undefined) {
+      plateSkip.value = data.plate_skip_frames;
+      plateSkipVal.textContent = `${data.plate_skip_frames}f`;
+    }
+    if (data.plate_save_screenshot !== undefined) plateScreenshot.checked = data.plate_save_screenshot;
+    if (data.notify_on_plate_detected !== undefined) plateNotif.checked = data.notify_on_plate_detected;
+
   } catch (e) {
     console.warn('failed to load config', e);
   }
@@ -1036,7 +1049,211 @@ btnScreenshot.addEventListener('click', async () => {
 });
 
 
-// Sync recording state on page load (in case server was already recording)
+// ── License Plates ────────────────────────────────────────────────────────────
+
+const platesToggle       = document.getElementById('toggle-plates');
+const plateConfidence    = document.getElementById('plate-confidence');
+const plateConfidenceVal = document.getElementById('plate-confidence-val');
+const plateSkip          = document.getElementById('plate-skip');
+const plateSkipVal       = document.getElementById('plate-skip-val');
+const plateScreenshot    = document.getElementById('toggle-plate-screenshot');
+const plateNotif         = document.getElementById('toggle-plate-notif');
+const plateLoading       = document.getElementById('plate-loading');
+const plateLoadingLabel  = document.getElementById('plate-loading-label');
+const plateSection       = document.getElementById('section-plates');
+
+platesToggle.addEventListener('change', () => {
+  patchConfig({ enable_plates: platesToggle.checked });
+});
+
+plateConfidence.addEventListener('input', () => {
+  plateConfidenceVal.textContent = `${plateConfidence.value}%`;
+});
+plateConfidence.addEventListener('input', debounce(() => {
+  patchConfig({ plate_confidence: parseInt(plateConfidence.value) / 100 });
+}, DEBOUNCE_MS));
+
+plateSkip.addEventListener('input', () => {
+  plateSkipVal.textContent = `${plateSkip.value}f`;
+});
+plateSkip.addEventListener('input', debounce(() => {
+  patchConfig({ plate_skip_frames: parseInt(plateSkip.value) });
+}, DEBOUNCE_MS));
+
+plateScreenshot.addEventListener('change', () => {
+  patchConfig({ plate_save_screenshot: plateScreenshot.checked });
+});
+
+plateNotif.addEventListener('change', () => {
+  patchConfig({ notify_on_plate_detected: plateNotif.checked });
+});
+
+// Model loading indicator
+window.addEventListener('vip:event', (e) => {
+  const { type, model, plate, plate_norm, list_status } = e.detail ?? {};
+  if (type === 'plate_model_loading') {
+    plateLoadingLabel.textContent = `Loading plate model…`;
+    plateLoading.classList.remove('hidden');
+    const body = plateSection.querySelector('.feature-body');
+    if (body) body.classList.remove('collapsed');
+  } else if (type === 'plate_model_ready' || type === 'plate_model_error') {
+    plateLoading.classList.add('hidden');
+  } else if (type === 'plate_detected') {
+    console.info(`Plate detected: ${plate} (${plate_norm}) — ${list_status}`);
+  }
+});
+
+// ── Plate Allow / Block List Modal ────────────────────────────────────────────
+
+const plateListOverlay = document.getElementById('plate-list-overlay');
+const btnPlateList     = document.getElementById('btn-plate-list');
+const btnPlateListClose = document.getElementById('btn-plate-list-close');
+const btnPlateListDone  = document.getElementById('btn-plate-list-done');
+const plEntriesEl       = document.getElementById('plate-list-entries');
+const plPlateText       = document.getElementById('pl-plate-text');
+const plNotes           = document.getElementById('pl-notes');
+const plError           = document.getElementById('pl-error');
+const btnPlAdd          = document.getElementById('btn-pl-add');
+
+function _plListType() {
+  return document.querySelector('input[name="pl-type"]:checked')?.value ?? 'allow';
+}
+
+async function loadPlateList() {
+  try {
+    const res  = await fetch('/api/plates/list');
+    const data = await res.json();
+    renderPlateList(data.entries ?? []);
+  } catch (e) {
+    console.warn('[plates] failed to load list', e);
+  }
+}
+
+function renderPlateList(entries) {
+  plEntriesEl.innerHTML = '';
+  if (entries.length === 0) {
+    plEntriesEl.innerHTML = '<p class="field-hint" style="margin-top:0.5rem">No entries yet.</p>';
+    return;
+  }
+  entries.forEach(({ plate_text_norm, plate_text_raw, list_type, notes }) => {
+    const row = document.createElement('div');
+    row.className = 'plate-list-row';
+    const badge = list_type === 'allow'
+      ? '<span class="plate-badge plate-badge--allow">allow</span>'
+      : '<span class="plate-badge plate-badge--block">block</span>';
+    row.innerHTML = `
+      ${badge}
+      <span class="plate-list-text">${plate_text_raw}</span>
+      ${notes ? `<span class="plate-list-notes">${notes}</span>` : ''}
+      <button class="face-item-btn zone-delete plate-list-del" data-norm="${plate_text_norm}" title="Remove">&times;</button>`;
+    row.querySelector('.plate-list-del').addEventListener('click', async (e) => {
+      const norm = e.currentTarget.dataset.norm;
+      await fetch(`/api/plates/list/${encodeURIComponent(norm)}`, { method: 'DELETE' });
+      loadPlateList();
+    });
+    plEntriesEl.appendChild(row);
+  });
+}
+
+function openPlateList() {
+  loadPlateList();
+  plateListOverlay.classList.remove('hidden');
+}
+function closePlateList() {
+  plateListOverlay.classList.add('hidden');
+  plError.style.display = 'none';
+}
+
+btnPlateList.addEventListener('click', openPlateList);
+btnPlateListClose.addEventListener('click', closePlateList);
+btnPlateListDone.addEventListener('click',  closePlateList);
+plateListOverlay.addEventListener('click', (e) => { if (e.target === plateListOverlay) closePlateList(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !plateListOverlay.classList.contains('hidden')) closePlateList();
+});
+
+btnPlAdd.addEventListener('click', async () => {
+  const text  = plPlateText.value.trim();
+  const ltype = _plListType();
+  const notes = plNotes.value.trim();
+  plError.style.display = 'none';
+  if (!text) { plError.textContent = 'Enter a plate number.'; plError.style.display = ''; return; }
+  try {
+    const res = await fetch('/api/plates/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ plate_text: text, list_type: ltype, notes }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      plError.textContent = err.detail ?? 'Failed to add plate.';
+      plError.style.display = '';
+      return;
+    }
+    plPlateText.value = '';
+    plNotes.value = '';
+    loadPlateList();
+  } catch (e) {
+    plError.textContent = 'Network error.';
+    plError.style.display = '';
+  }
+});
+
+// ── Recent Plate Events Modal ─────────────────────────────────────────────────
+
+const plateEventsOverlay = document.getElementById('plate-events-overlay');
+const btnPlateEvents     = document.getElementById('btn-plate-events');
+const btnPlateEventsClose = document.getElementById('btn-plate-events-close');
+const btnPlateEventsDone  = document.getElementById('btn-plate-events-done');
+const plateEventsList     = document.getElementById('plate-events-list');
+
+async function loadPlateEvents() {
+  const sid = window.activeStreamId;
+  const url  = sid ? `/api/plates/events?stream_id=${sid}&limit=50` : '/api/plates/events?limit=50';
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    renderPlateEvents(data.events ?? []);
+  } catch (e) {
+    console.warn('[plates] failed to load events', e);
+  }
+}
+
+function renderPlateEvents(events) {
+  plateEventsList.innerHTML = '';
+  if (events.length === 0) {
+    plateEventsList.innerHTML = '<p class="field-hint" style="margin-top:0.5rem">No detections yet.</p>';
+    return;
+  }
+  events.forEach(({ plate_text, plate_text_norm, confidence, detected_at, screenshot_path }) => {
+    const row = document.createElement('div');
+    row.className = 'plate-event-row';
+    const dt = new Date(detected_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' });
+    row.innerHTML = `
+      <span class="plate-event-text">${plate_text}</span>
+      <span class="plate-event-conf">${Math.round(confidence * 100)}%</span>
+      <span class="plate-event-time">${dt}</span>`;
+    plateEventsList.appendChild(row);
+  });
+}
+
+function openPlateEvents() {
+  loadPlateEvents();
+  plateEventsOverlay.classList.remove('hidden');
+}
+function closePlateEvents() {
+  plateEventsOverlay.classList.add('hidden');
+}
+
+btnPlateEvents.addEventListener('click', openPlateEvents);
+btnPlateEventsClose.addEventListener('click', closePlateEvents);
+btnPlateEventsDone.addEventListener('click',  closePlateEvents);
+plateEventsOverlay.addEventListener('click', (e) => { if (e.target === plateEventsOverlay) closePlateEvents(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !plateEventsOverlay.classList.contains('hidden')) closePlateEvents();
+});
+
+// ── Sync recording state on page load (in case server was already recording)
 fetch(_recordingBase() + '/status')
   .then(r => r.json())
   .then(data => {

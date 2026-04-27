@@ -124,6 +124,15 @@ class StreamRegistry:
         face_proc._ws_manager = ws_manager
         pipeline.add_processor(face_proc)
 
+        from app.processors.plates import PlateProcessor
+        plate_proc = PlateProcessor()
+        plate_proc._cfg = stream_cfg
+        plate_proc.enabled = stream_cfg.enable_plates
+        plate_proc._ws_manager = ws_manager
+        plate_proc._stream_id = stream_id
+        plate_proc._stream_name = stream["name"]
+        pipeline.add_processor(plate_proc)
+
         # ── Services ──────────────────────────────────────────────────────────
         recorder = RecordingService(
             channel_number=stream["channel_number"],
@@ -132,8 +141,15 @@ class StreamRegistry:
         pipeline._recorder = recorder
         zone_proc._recorder = recorder
         face_proc._recorder = recorder
+        plate_proc._recorder = recorder
         zone_proc._notifier = notifier
         face_proc._notifier = notifier
+        plate_proc._notifier = notifier
+
+        # Load the plate allow/block list into the processor
+        from app.services import database as db
+        plate_list = await db.load_plate_list()
+        plate_proc.reload_plate_list(plate_list)
 
         # ── Start ─────────────────────────────────────────────────────────────
         reader.start()
@@ -156,6 +172,7 @@ class StreamRegistry:
                 "ZoneProcessor":      zone_proc,
                 "DetectionProcessor": det_proc,
                 "FaceProcessor":      face_proc,
+                "PlateProcessor":     plate_proc,
             },
             pipeline_task=pipeline_task,
         )

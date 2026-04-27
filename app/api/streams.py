@@ -354,6 +354,14 @@ class StreamConfigUpdate(BaseModel):
     face_auto_enroll: Optional[bool] = None
     face_auto_enroll_min_score: Optional[float] = None
     notify_on_face_recognized: Optional[bool] = None
+    # Plates
+    enable_plates: Optional[bool] = None
+    plate_model: Optional[str] = None
+    plate_confidence: Optional[float] = None
+    plate_skip_frames: Optional[int] = None
+    plate_ocr_languages: Optional[str] = None
+    notify_on_plate_detected: Optional[bool] = None
+    plate_save_screenshot: Optional[bool] = None
 
 
 @router.get("/{stream_id}/config")
@@ -382,6 +390,7 @@ async def update_stream_config(stream_id: int, body: StreamConfigUpdate):
         "ZoneProcessor":      body.enable_zones,
         "DetectionProcessor": body.enable_detection,
         "FaceProcessor":      body.enable_faces,
+        "PlateProcessor":     body.enable_plates,
     }
     for proc_name, val in toggle_map.items():
         if val is not None:

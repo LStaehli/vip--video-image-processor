@@ -60,6 +60,15 @@ class StreamConfig:
     face_auto_enroll_min_score: float = 0.85
     notify_on_face_recognized: bool = False
 
+    # License plate recognition
+    enable_plates: bool = False
+    plate_model: str = "yolov8n-lp.pt"
+    plate_confidence: float = 0.5
+    plate_skip_frames: int = 3
+    plate_ocr_languages: str = "en"
+    notify_on_plate_detected: bool = False
+    plate_save_screenshot: bool = True
+
     # ── Helpers ───────────────────────────────────────────────────────────────
 
     @property
@@ -107,6 +116,13 @@ class StreamConfig:
             face_auto_enroll=s.face_auto_enroll,
             face_auto_enroll_min_score=s.face_auto_enroll_min_score,
             notify_on_face_recognized=s.notify_on_face_recognized,
+            enable_plates=s.enable_plates,
+            plate_model=s.plate_model,
+            plate_confidence=s.plate_confidence,
+            plate_skip_frames=s.plate_skip_frames,
+            plate_ocr_languages=s.plate_ocr_languages,
+            notify_on_plate_detected=s.notify_on_plate_detected,
+            plate_save_screenshot=s.plate_save_screenshot,
         )
 
     def to_api_dict(self) -> dict:
@@ -119,14 +135,18 @@ class StreamConfig:
             "motion_trail_enabled", "motion_contour_enabled", "motion_arrow_enabled",
             "motion_center_enabled", "notify_on_zone_trigger", "face_show_landmarks",
             "face_auto_enroll", "notify_on_face_recognized",
+            "enable_plates", "notify_on_plate_detected", "plate_save_screenshot",
         }
         _INT = {
             "target_fps", "jpeg_quality", "motion_min_area", "motion_trail_length",
             "motion_mog2_threshold", "motion_dilate_kernel", "motion_trail_max_radius",
             "motion_contour_thickness", "motion_arrow_thickness", "motion_center_radius",
-            "yolo_skip_frames", "face_skip_frames",
+            "yolo_skip_frames", "face_skip_frames", "plate_skip_frames",
         }
-        _FLOAT = {"yolo_confidence", "face_similarity_threshold", "face_auto_enroll_min_score"}
+        _FLOAT = {
+            "yolo_confidence", "face_similarity_threshold", "face_auto_enroll_min_score",
+            "plate_confidence",
+        }
 
         for key, value in data.items():
             if not hasattr(self, key):

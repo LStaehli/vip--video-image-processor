@@ -258,6 +258,64 @@
         </div>
       </section>
 
+      <!-- ── License Plates ── -->
+      <section class="feature-section" id="section-plates">
+        <div class="feature-header">
+          <h2>License Plates</h2>
+          <label class="toggle-switch">
+            <input type="checkbox" id="toggle-plates" />
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="feature-body collapsed" id="plates-body">
+
+          <div id="plate-loading" class="det-loading hidden">
+            <span class="det-spinner"></span>
+            <span id="plate-loading-label">Loading model…</span>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="plate-confidence">Detection confidence</label>
+              <span class="field-value" id="plate-confidence-val"></span>
+            </div>
+            <input type="range" id="plate-confidence" min="5" max="95" step="5" />
+            <div class="field-hint">Minimum YOLO score to consider a plate candidate</div>
+          </div>
+
+          <div class="field">
+            <div class="field-row">
+              <label for="plate-skip">Run every</label>
+              <span class="field-value" id="plate-skip-val"></span>
+            </div>
+            <input type="range" id="plate-skip" min="1" max="10" step="1" />
+            <div class="field-hint">Frames between detection calls — higher = faster stream</div>
+          </div>
+
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-plate-screenshot" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Save screenshot on detection</span>
+          </div>
+
+          <div class="toggle-row">
+            <label class="toggle-switch">
+              <input type="checkbox" id="toggle-plate-notif" />
+              <span class="slider"></span>
+            </label>
+            <span class="toggle-label">Send notifications on detection</span>
+          </div>
+
+          <div class="face-actions">
+            <button class="btn-secondary" id="btn-plate-list">Allow / block list…</button>
+            <button class="btn-secondary" id="btn-plate-events">Recent plates…</button>
+          </div>
+
+        </div>
+      </section>
+
       <!-- ── Notifications ── -->
       <section>
         <h2>Notifications</h2>
@@ -756,6 +814,76 @@
       <div class="modal-footer">
         <button id="btn-face-settings-cancel" class="btn-secondary">Cancel</button>
         <button id="btn-face-settings-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Plate Allow / Block List Modal ── -->
+  <div id="plate-list-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>License Plate List</h3>
+        <button class="modal-close" id="btn-plate-list-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <p class="field-hint" style="margin-bottom:0.5rem">
+          <b>Block list</b> — plates are always silently ignored (no screenshot, no notification).<br>
+          <b>Allow list</b> — when non-empty, only listed plates trigger screenshots and notifications.
+        </p>
+
+        <!-- Add form -->
+        <div class="modal-group">
+          <div class="modal-group-title">Add plate</div>
+          <div class="modal-row modal-row--col">
+            <label for="pl-plate-text">Plate (e.g. AB-123-CD)</label>
+            <input type="text" id="pl-plate-text" class="text-input"
+                   placeholder="AB123CD" spellcheck="false" autocapitalize="characters" />
+          </div>
+          <div class="modal-row" style="margin-top:0.5rem">
+            <label>List type</label>
+            <div style="display:flex;gap:1rem">
+              <label class="radio-label"><input type="radio" name="pl-type" id="pl-type-allow" value="allow" checked /> Allow</label>
+              <label class="radio-label"><input type="radio" name="pl-type" id="pl-type-block" value="block" /> Block</label>
+            </div>
+          </div>
+          <div class="modal-row modal-row--col" style="margin-top:0.5rem">
+            <label for="pl-notes">Notes (optional)</label>
+            <input type="text" id="pl-notes" class="text-input" placeholder="e.g. Owner's car" spellcheck="false" />
+          </div>
+          <div style="margin-top:0.5rem;text-align:right">
+            <button id="btn-pl-add">Add to list</button>
+          </div>
+          <p id="pl-error" class="field-hint" style="color:var(--danger);margin-top:0.25rem;display:none"></p>
+        </div>
+
+        <!-- Current entries -->
+        <div class="modal-group">
+          <div class="modal-group-title">Current entries</div>
+          <div id="plate-list-entries"></div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-plate-list-done">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Recent Plate Events Modal ── -->
+  <div id="plate-events-overlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>Recent Plate Detections</h3>
+        <button class="modal-close" id="btn-plate-events-close" aria-label="Close">&times;</button>
+      </div>
+
+      <div class="modal-body">
+        <div id="plate-events-list"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="btn-plate-events-done">Close</button>
       </div>
     </div>
   </div>

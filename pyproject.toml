@@ -15,6 +15,7 @@ dependencies = [
     "ultralytics>=8.1",
     "deepface>=0.0.93",
     "tf-keras>=2.21.0",
+    "easyocr>=1.7",
 ]
 dev = [
     "pytest>=8.0",

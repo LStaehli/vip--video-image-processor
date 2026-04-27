@@ -30,6 +30,9 @@ _last_notified: dict[str, float] = {}
 # face_name → monotonic timestamp of last notification sent
 _last_notified_faces: dict[str, float] = {}
 
+# plate_text_norm → monotonic timestamp of last notification sent
+_last_notified_plates: dict[str, float] = {}
+
 
 async def notify_zone_trigger(
     zone_id: str,
@@ -313,4 +316,153 @@ async def _send_email_face(
     logger.info(
         "Email face notification sent to %s (face=%s, snapshot=%s)",
         settings.notify_email, face_name, snapshot is not None,
+    )
+
+
+# ── License plate notifications ───────────────────────────────────────────────
+
+async def notify_plate_detected(
+    plate_text: str,
+    plate_text_norm: str,
+    stream_name: str,
+    recording_path: str | None = None,
+    snapshot: bytes | None = None,
+    telegram_message: str = "",
+    email_message: str = "",
+) -> None:
+    """Fire Telegram + email alerts when a license plate is detected.
+
+    Args:
+        plate_text:      Raw OCR plate text for display.
+        plate_text_norm: Normalised plate text (used for cooldown key).
+        stream_name:     Human-readable channel name shown in the message.
+        recording_path:  Active recording file path, if any.
+        snapshot:        JPEG-encoded annotated frame bytes.
+        telegram_message: Custom Telegram body (already resolved).
+        email_message:    Custom email body (already resolved).
+    """
+    now = time.monotonic()
+    if now - _last_notified_plates.get(plate_text_norm, 0.0) < settings.notify_cooldown:
+        logger.debug("Plate notification suppressed for '%s' (cooldown)", plate_text_norm)
+        return
+    _last_notified_plates[plate_text_norm] = now
+
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    tasks: list = []
+
+    if settings.telegram_bot_token and settings.telegram_chat_id:
+        tasks.append(_send_telegram_plate(
+            plate_text, stream_name, ts, recording_path, snapshot, telegram_message
+        ))
+
+    if settings.smtp_host and settings.notify_email:
+        tasks.append(_send_email_plate(
+            plate_text, stream_name, ts, recording_path, snapshot, email_message
+        ))
+
+    if not tasks:
+        logger.debug("No notification channels configured — skipping plate notification")
+        return
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error("Plate notification delivery error: %s", result)
+
+
+async def _send_telegram_plate(
+    plate_text: str,
+    stream_name: str,
+    ts: str,
+    recording_path: str | None,
+    snapshot: bytes | None,
+    custom_message: str = "",
+) -> None:
+    if custom_message:
+        caption = custom_message
+    else:
+        caption_lines = [
+            "🚗 <b>Plate detected</b>",
+            f"Plate: <b>{plate_text}</b>",
+            f"Stream: {stream_name}",
+            f"Time: {ts}",
+        ]
+        if recording_path:
+            caption_lines.append(f"Recording: <code>{recording_path}</code>")
+        caption = "\n".join(caption_lines)
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        if snapshot:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendPhoto",
+                data={
+                    "chat_id": settings.telegram_chat_id,
+                    "caption": caption,
+                    "parse_mode": "HTML",
+                },
+                files={"photo": ("snapshot.jpg", snapshot, "image/jpeg")},
+            )
+        else:
+            resp = await client.post(
+                f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+                json={
+                    "chat_id": settings.telegram_chat_id,
+                    "text": caption,
+                    "parse_mode": "HTML",
+                },
+            )
+        resp.raise_for_status()
+
+    logger.info(
+        "Telegram plate notification sent (plate=%s, snapshot=%s)", plate_text, snapshot is not None
+    )
+
+
+async def _send_email_plate(
+    plate_text: str,
+    stream_name: str,
+    ts: str,
+    recording_path: str | None,
+    snapshot: bytes | None,
+    custom_message: str = "",
+) -> None:
+    if custom_message:
+        body_text = custom_message
+    else:
+        body_lines = [
+            f"License plate detected: {plate_text}",
+            f"Stream: {stream_name}",
+            f"Time: {ts}",
+        ]
+        if recording_path:
+            body_lines.append(f"Recording saved to: {recording_path}")
+        body_text = "\n".join(body_lines)
+
+    if snapshot:
+        msg: MIMEMultipart | MIMEText = MIMEMultipart()
+        msg.attach(MIMEText(body_text))
+        img = MIMEImage(snapshot, _subtype="jpeg")
+        img.add_header("Content-Disposition", "attachment", filename="snapshot.jpg")
+        msg.attach(img)
+    else:
+        msg = MIMEText(body_text)
+
+    msg["From"] = settings.smtp_from or settings.smtp_user
+    msg["To"] = settings.notify_email
+    msg["Subject"] = f"[VIP] Plate detected: {plate_text}"
+
+    use_tls = settings.smtp_port == 465
+
+    await aiosmtplib.send(
+        msg,
+        hostname=settings.smtp_host,
+        port=settings.smtp_port,
+        username=settings.smtp_user or None,
+        password=settings.smtp_password or None,
+        use_tls=use_tls,
+        start_tls=not use_tls,
+    )
+    logger.info(
+        "Email plate notification sent to %s (plate=%s, snapshot=%s)",
+        settings.notify_email, plate_text, snapshot is not None,
     )

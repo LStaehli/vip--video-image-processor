@@ -836,3 +836,61 @@ textarea.text-input {
   letter-spacing: 0.03em;
   user-select: none;
 }
+
+/* ── License plate list ──────────────────────────────────────────────────── */
+
+.plate-list-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.plate-list-row:last-child { border-bottom: none; }
+
+.plate-list-text {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.88rem;
+  letter-spacing: 0.05em;
+}
+
+.plate-list-notes {
+  color: var(--muted);
+  font-size: 0.75rem;
+  flex: 1;
+}
+
+.plate-badge {
+  display: inline-block;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.plate-badge--allow { background: rgba(80, 220, 80, 0.18); color: #50dc50; }
+.plate-badge--block { background: rgba(247,107,107, 0.18); color: var(--red); }
+
+/* ── Plate events list ───────────────────────────────────────────────────── */
+
+.plate-event-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.82rem;
+}
+.plate-event-row:last-child { border-bottom: none; }
+
+.plate-event-text {
+  flex: 1;
+  font-family: monospace;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+}
+.plate-event-conf { color: var(--muted); min-width: 2.5rem; text-align: right; }
+.plate-event-time { color: var(--muted); font-size: 0.75rem; white-space: nowrap; }

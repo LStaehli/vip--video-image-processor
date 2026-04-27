@@ -83,6 +83,9 @@ async def lifespan(app: FastAPI):
     from app.api import streams as streams_api
     streams_api.init(registry=registry, loop=loop, notifier=notifier)
 
+    from app.api import plates as plates_api
+    plates_api.init(registry=registry)
+
     yield  # ── Application runs here ──────────────────────────────────────────
 
     # ── Shutdown ─────────────────────────────────────────────────────────────
@@ -99,6 +102,7 @@ from app.api.recording import router as recording_router
 from app.api.zones import router as zones_router
 from app.api.faces import router as faces_router
 from app.api.streams import router as streams_router
+from app.api.plates import router as plates_router
 
 app.include_router(stream_router)
 app.include_router(config_router)
@@ -106,5 +110,6 @@ app.include_router(recording_router)
 app.include_router(zones_router)
 app.include_router(faces_router)
 app.include_router(streams_router)
+app.include_router(plates_router)
 
 app.mount("/", StaticFiles(directory="app/static", html=True), name="static")

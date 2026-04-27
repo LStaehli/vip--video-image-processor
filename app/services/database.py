@@ -130,6 +130,25 @@ async def _create_schema() -> None:
             value     TEXT    NOT NULL,
             PRIMARY KEY (stream_id, key)
         );
+
+        CREATE TABLE IF NOT EXISTS plate_events (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            stream_id       INTEGER NOT NULL,
+            plate_text      TEXT    NOT NULL,
+            plate_text_norm TEXT    NOT NULL,
+            confidence      REAL    NOT NULL,
+            detected_at     TEXT    NOT NULL,
+            recording_id    TEXT,
+            screenshot_path TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS plate_list (
+            plate_text_norm TEXT PRIMARY KEY,
+            plate_text_raw  TEXT NOT NULL,
+            list_type       TEXT NOT NULL,
+            notes           TEXT NOT NULL DEFAULT '',
+            created_at      TEXT NOT NULL
+        );
     """)
     await get_db().commit()
     await _migrate()
@@ -518,3 +537,88 @@ async def delete_face_notification_settings(face_name: str) -> None:
     db = get_db()
     await db.execute("DELETE FROM face_notification_settings WHERE face_name = ?", (face_name,))
     await db.commit()
+
+
+# ── Plate events ──────────────────────────────────────────────────────────────
+
+async def log_plate_event(
+    stream_id: int,
+    plate_text: str,
+    plate_text_norm: str,
+    confidence: float,
+    recording_id: str | None = None,
+    screenshot_path: str | None = None,
+) -> int:
+    """Insert a plate detection event and return its row id."""
+    db = get_db()
+    cur = await db.execute(
+        """INSERT INTO plate_events
+           (stream_id, plate_text, plate_text_norm, confidence, detected_at, recording_id, screenshot_path)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (stream_id, plate_text, plate_text_norm, round(confidence, 4), _now(), recording_id, screenshot_path),
+    )
+    await db.commit()
+    return cur.lastrowid
+
+
+async def load_plate_events(stream_id: int | None = None, limit: int = 50) -> list[dict]:
+    """Return recent plate events, optionally filtered to one stream."""
+    if stream_id is not None:
+        sql = (
+            "SELECT id, stream_id, plate_text, plate_text_norm, confidence, "
+            "detected_at, recording_id, screenshot_path "
+            "FROM plate_events WHERE stream_id = ? ORDER BY id DESC LIMIT ?"
+        )
+        params = (stream_id, limit)
+    else:
+        sql = (
+            "SELECT id, stream_id, plate_text, plate_text_norm, confidence, "
+            "detected_at, recording_id, screenshot_path "
+            "FROM plate_events ORDER BY id DESC LIMIT ?"
+        )
+        params = (limit,)
+    async with get_db().execute(sql, params) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ── Plate allow/block list ────────────────────────────────────────────────────
+
+async def load_plate_list() -> list[dict]:
+    """Return all entries in the plate allow/block list."""
+    async with get_db().execute(
+        "SELECT plate_text_norm, plate_text_raw, list_type, notes, created_at "
+        "FROM plate_list ORDER BY list_type, plate_text_norm"
+    ) as cur:
+        rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def upsert_plate_list_entry(
+    plate_text_norm: str,
+    plate_text_raw: str,
+    list_type: str,
+    notes: str = "",
+) -> None:
+    """Add or update a plate in the allow/block list."""
+    db = get_db()
+    await db.execute(
+        """INSERT INTO plate_list (plate_text_norm, plate_text_raw, list_type, notes, created_at)
+           VALUES (?, ?, ?, ?, ?)
+           ON CONFLICT(plate_text_norm) DO UPDATE
+               SET plate_text_raw = excluded.plate_text_raw,
+                   list_type      = excluded.list_type,
+                   notes          = excluded.notes""",
+        (plate_text_norm, plate_text_raw, list_type, notes, _now()),
+    )
+    await db.commit()
+
+
+async def delete_plate_list_entry(plate_text_norm: str) -> bool:
+    """Remove a plate from the list. Returns True if a row was deleted."""
+    db = get_db()
+    cur = await db.execute(
+        "DELETE FROM plate_list WHERE plate_text_norm = ?", (plate_text_norm,)
+    )
+    await db.commit()
+    return cur.rowcount > 0
