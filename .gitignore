@@ -179,6 +179,8 @@ cython_debug/
 # VIP — project-specific ignores
 # Downloaded model weights (YOLO, InsightFace)
 models/
+# Testing mocked video and other content
+tests/fixtures/
 # Stray .pt files at repo root
 /*.pt
 *.db

@@ -1,7 +1,7 @@
 """License plate API.
 
 GET    /api/plates/events              — recent plate detection events
-GET    /api/plates/list                — allowlist + blocklist entries
+GET    /api/plates/list                — target list + allowed list entries
 POST   /api/plates/list                — add or update an entry
 DELETE /api/plates/list/{plate_norm}   — remove an entry
 """
@@ -31,7 +31,7 @@ def _normalize(text: str) -> str:
 
 class PlateListEntry(BaseModel):
     plate_text: str       # raw text as typed; normalised server-side
-    list_type: str        # "allow" or "block"
+    list_type: str        # "target" or "allowed"
     notes: str = ""
 
 
@@ -48,16 +48,16 @@ async def get_plate_events(stream_id: int | None = None, limit: int = 100):
 
 @router.get("/list")
 async def get_plate_list():
-    """Return all entries in the plate allow/block list."""
+    """Return all entries in the plate target/allowed list."""
     entries = await db.load_plate_list()
     return {"entries": entries}
 
 
 @router.post("/list", status_code=201)
 async def add_plate_list_entry(body: PlateListEntry):
-    """Add or update a plate in the allow/block list."""
-    if body.list_type not in ("allow", "block"):
-        raise HTTPException(status_code=422, detail="list_type must be 'allow' or 'block'")
+    """Add or update a plate in the target/allowed list."""
+    if body.list_type not in ("target", "allowed"):
+        raise HTTPException(status_code=422, detail="list_type must be 'target' or 'allowed'")
     plate_norm = _normalize(body.plate_text)
     if not plate_norm:
         raise HTTPException(status_code=422, detail="plate_text contains no alphanumeric characters")

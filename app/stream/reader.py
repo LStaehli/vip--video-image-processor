@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import time
+from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
 # Must be set before cv2 tries to use AVFoundation on macOS, otherwise the
@@ -20,6 +21,15 @@ _RECONNECT_MAX_DELAY = 30.0
 # Detect MJPEG HTTP/HTTPS streams (mjpg-streamer, picamera2, etc.)
 _MJPEG_SCHEMES = ("http", "https")
 _MJPEG_PATH_HINTS = ("action=stream", "stream.mjpg", "mjpeg", "video.mjpeg")
+
+
+def _is_local_file(source) -> bool:
+    """Return True when source is a path to a local file (not a URL, not a device index)."""
+    if not isinstance(source, str):
+        return False
+    parsed = urlparse(source)
+    # Treat as local file when there is no network scheme
+    return parsed.scheme in ("", "file") and Path(source.replace("file://", "")).exists()
 
 
 def _is_mjpeg_url(source) -> bool:
@@ -74,6 +84,7 @@ class StreamReader:
         self._thread: threading.Thread | None = None
         self._cap: cv2.VideoCapture | None = None
         self.connected = False
+        self._source_changed = False  # set by set_source() to skip reconnect delay
 
     def start(self) -> None:
         self._running = True
@@ -92,10 +103,12 @@ class StreamReader:
     def set_source(self, source: int | str) -> None:
         """Switch to a new video source without restarting the server.
 
-        Releases the current capture immediately; the background thread's
-        reconnection loop will open the new source on its next iteration.
+        Releases the current capture immediately; _run_opencv() detects the
+        None cap on its next iteration and breaks out so _run() reopens the
+        new source with no reconnect delay.
         """
         self._source = source
+        self._source_changed = True
         self.connected = False
         if self._cap:
             self._cap.release()
@@ -111,12 +124,18 @@ class StreamReader:
     def _run(self) -> None:
         delay = _RECONNECT_INITIAL_DELAY
         while self._running:
+            source_changed = self._source_changed
+            self._source_changed = False
+
             if _is_mjpeg_url(self._source):
                 success = self._run_mjpeg(self._source)
             else:
                 success = self._run_opencv()
 
-            if not success:
+            if source_changed:
+                # Explicit source swap — reconnect immediately regardless of success
+                delay = _RECONNECT_INITIAL_DELAY
+            elif not success:
                 self.connected = False
                 logger.warning("Stream failed — retrying in %.1fs…", delay)
                 time.sleep(delay)
@@ -141,25 +160,55 @@ class StreamReader:
         return None
 
     def _run_opencv(self) -> bool:
-        """Read frames via OpenCV VideoCapture. Returns True if connected at least once."""
+        """Read frames via OpenCV VideoCapture. Returns True if connected at least once.
+
+        set_source() may be called from another thread at any time.  It releases
+        self._cap and sets it to None.  We snapshot self._cap into a local ``cap``
+        variable at the top of every iteration so we always hold a valid reference
+        for the duration of that iteration, even if set_source() fires mid-loop.
+        When we detect self._cap is None (source changed) we break immediately so
+        _run() can re-open the new source with no reconnect delay.
+        """
         self._cap = self._open_capture()
         if self._cap is None:
             logger.warning("OpenCV: failed to open source: %s", self._source)
             return False
 
         self.connected = True
-        logger.info("Stream opened via OpenCV: %s", self._source)
+        is_file = _is_local_file(self._source)
+        if is_file:
+            fps = self._cap.get(cv2.CAP_PROP_FPS) or 25.0
+            frame_delay = 1.0 / fps
+            logger.info("Stream opened via OpenCV (local file, %.0f fps): %s", fps, self._source)
+        else:
+            frame_delay = 0.0
+            logger.info("Stream opened via OpenCV: %s", self._source)
 
         while self._running:
-            ok, frame = self._cap.read()
+            cap = self._cap          # atomic snapshot — safe across set_source() calls
+            if cap is None:
+                break                # source was swapped out; reconnect immediately
+
+            ok, frame = cap.read()
             if not ok:
+                if is_file and cap.isOpened():
+                    # End of file — seek back to start and loop seamlessly
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    logger.debug("OpenCV: local file looped: %s", self._source)
+                    continue
+                # For live streams, or when the cap was released by set_source()
                 logger.warning("OpenCV: stream read failed — reconnecting…")
                 self.connected = False
                 break
             self._push(frame)
+            if frame_delay:
+                time.sleep(frame_delay)
 
-        self._cap.release()
-        self._cap = None
+        # Guard: set_source() may have already released self._cap
+        cap = self._cap
+        if cap is not None:
+            cap.release()
+            self._cap = None
         return True
 
     # ── MJPEG-over-HTTP path ──────────────────────────────────────────────────

@@ -227,10 +227,19 @@ class Settings(BaseSettings):
     face_auto_enroll: bool = False          # auto-enroll unknown faces above quality threshold
     face_auto_enroll_min_score: float = 0.85  # minimum det_score to trigger auto-enroll
 
+    # License plate recognition
+    enable_plates: bool = False
+    plate_model: str = "yolov8n-lp.pt"
+    plate_confidence: float = 0.5
+    plate_skip_frames: int = 3
+    plate_ocr_languages: str = "en"
+    notify_on_plate_detected: bool = False
+    plate_save_screenshot: bool = True
+
     # Notifications — all fields optional; unconfigured channels are silently skipped
     notify_on_zone_trigger: bool = False
     notify_on_face_recognized: bool = False
-    notify_cooldown: int = 60   # seconds between repeated alerts for the same zone/face
+    notify_cooldown: int = 30   # seconds between repeated alerts for the same zone/face
 
     # Telegram (optional)
     telegram_bot_token: str = ""

@@ -23,7 +23,6 @@ import concurrent.futures
 import logging
 import re
 import time
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,14 +35,16 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
-_PLATE_MODEL_URL = (
-    "https://huggingface.co/keremberke/yolov8n-license-plate-detection"
-    "/resolve/main/best.pt"
-)
+# HuggingFace repo + filename for the default plate detection model.
+# Download is attempted via huggingface_hub (already a transitive dependency of
+# ultralytics) so it benefits from HF_TOKEN auth, local caching, and resumable
+# downloads.  Set HF_TOKEN in your .env to access gated repos.
+_HF_REPO_ID  = "Koushim/yolov8-license-plate-detection"
+_HF_FILENAME = "best.pt"
 
 _COLOR_PLATE   = (0, 200, 255)   # amber (BGR)
-_COLOR_BLOCKED = (0, 0, 180)     # dark red — blocked plate
-_COLOR_ALLOWED = (0, 220, 80)    # green  — allowlisted plate
+_COLOR_ALLOWED = (0, 220, 80)    # green  — allowed plate
+_COLOR_TARGET  = (0, 120, 255)   # orange — targeted/watched plate
 
 # Seconds between repeated detections for the same plate text (in-processor)
 _DETECT_COOLDOWN = 30.0
@@ -57,17 +58,52 @@ def normalize_plate(text: str) -> str:
 
 
 def _resolve_model_path(name: str) -> str:
-    """Return the full local path for a plate model, downloading if missing."""
+    """Return the full local path for a plate model, downloading if missing.
+
+    Download strategy (in order):
+    1. huggingface_hub.hf_hub_download — handles HF_TOKEN auth, caching,
+       and resumable transfers.  This is the preferred path.
+    2. If huggingface_hub is not available (should not happen since ultralytics
+       already requires it), raises with clear instructions.
+
+    To use a gated or private model set HF_TOKEN in your environment / .env.
+    You can also skip the download entirely by placing the .pt file at
+    models/<name> before enabling the plate processor.
+    """
     p = Path("models") / name
     p.parent.mkdir(parents=True, exist_ok=True)
-    if not p.exists():
-        logger.info("Plate model not found locally — downloading to %s …", p)
-        try:
-            urllib.request.urlretrieve(_PLATE_MODEL_URL, str(p))
-            logger.info("Plate model downloaded: %s", p)
-        except Exception as exc:
-            logger.error("Failed to download plate model: %s", exc)
-            raise
+    if p.exists():
+        return str(p)
+
+    logger.info("Plate model not found locally — downloading to %s …", p)
+    try:
+        from huggingface_hub import hf_hub_download
+        downloaded = hf_hub_download(
+            repo_id=_HF_REPO_ID,
+            filename=_HF_FILENAME,
+            local_dir=str(p.parent),
+            local_dir_use_symlinks=False,
+        )
+        # hf_hub_download saves as <local_dir>/<filename>; rename to the
+        # model name the config expects (e.g. "yolov8n-lp.pt").
+        src = Path(downloaded)
+        if src.resolve() != p.resolve():
+            src.rename(p)
+        logger.info("Plate model downloaded: %s", p)
+    except Exception as exc:
+        # Clean up any partial file so the next attempt retries the download
+        if p.exists():
+            p.unlink(missing_ok=True)
+        logger.error("Failed to download plate model: %s", exc)
+        raise RuntimeError(
+            f"Could not download the plate detection model automatically "
+            f"({exc}). "
+            f"Options:\n"
+            f"  1. Set HF_TOKEN in .env and restart (if the repo is gated).\n"
+            f"  2. Download '{_HF_FILENAME}' manually from "
+            f"https://huggingface.co/{_HF_REPO_ID} "
+            f"and place it at models/{name}."
+        ) from exc
     return str(p)
 
 
@@ -80,7 +116,7 @@ class PlateResult:
     ocr_confidence:  float                  # EasyOCR confidence 0–1
     det_confidence:  float                  # YOLO detection confidence 0–1
     bbox:            tuple[int, int, int, int]  # x1, y1, x2, y2 of plate in frame
-    list_status:     str = "none"           # "allowed" | "blocked" | "none"
+    list_status:     str = "none"           # "target" | "allowed" | "none"
 
 
 # ── Processor ─────────────────────────────────────────────────────────────────
@@ -105,9 +141,9 @@ class PlateProcessor(BaseProcessor):
         self._ws_manager    = None
         self._stream_id     : int | None = None
         self._stream_name   : str = "Channel"
-        # In-memory allow/block sets (refreshed from DB on first detection)
-        self._allowed_plates: set[str] = set()
-        self._blocked_plates: set[str] = set()
+        # In-memory target/allowed sets (refreshed from DB via reload_plate_list)
+        self._target_plates:  set[str] = set()   # "target" list — trigger alerts
+        self._allowed_plates: set[str] = set()   # "allowed" list — suppress alerts
         self._list_loaded   = False
         self._executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="plate-loader"
@@ -116,17 +152,17 @@ class PlateProcessor(BaseProcessor):
     # ── Public interface ──────────────────────────────────────────────────────
 
     def reload_plate_list(self, entries: list[dict]) -> None:
-        """Refresh the in-memory allow/block lists from a list of DB dicts."""
-        self._allowed_plates = {
-            e["plate_text_norm"] for e in entries if e["list_type"] == "allow"
+        """Refresh the in-memory target/allowed lists from a list of DB dicts."""
+        self._target_plates = {
+            e["plate_text_norm"] for e in entries if e["list_type"] == "target"
         }
-        self._blocked_plates = {
-            e["plate_text_norm"] for e in entries if e["list_type"] == "block"
+        self._allowed_plates = {
+            e["plate_text_norm"] for e in entries if e["list_type"] == "allowed"
         }
         self._list_loaded = True
         logger.debug(
-            "Plate list reloaded: %d allowed, %d blocked",
-            len(self._allowed_plates), len(self._blocked_plates),
+            "Plate list reloaded: %d target, %d allowed",
+            len(self._target_plates), len(self._allowed_plates),
         )
 
     def process(self, frame: np.ndarray, state: FrameState) -> np.ndarray:
@@ -288,21 +324,21 @@ class PlateProcessor(BaseProcessor):
         return text, conf
 
     def _check_list(self, plate_norm: str) -> str:
-        """Return 'blocked', 'allowed', or 'none' based on in-memory lists."""
-        if plate_norm in self._blocked_plates:
-            return "blocked"
-        if self._allowed_plates and plate_norm not in self._allowed_plates:
-            return "none"  # allowlist active but plate not in it
-        if self._allowed_plates and plate_norm in self._allowed_plates:
-            return "allowed"
-        return "none"  # no allowlist → treat as allowed for events
+        """Return 'target', 'allowed', or 'none' based on in-memory lists."""
+        if plate_norm in self._allowed_plates:
+            return "allowed"                        # explicitly cleared — no alert
+        if self._target_plates and plate_norm not in self._target_plates:
+            return "none"                           # target list active but plate not listed
+        if self._target_plates and plate_norm in self._target_plates:
+            return "target"                         # explicitly targeted — alert
+        return "none"                               # no target list — treat as normal
 
     def _should_notify(self, list_status: str) -> bool:
         """Return True when this plate should trigger notification/save."""
-        if list_status == "blocked":
-            return False
-        # If allowlist is active, only explicitly allowed plates notify
-        if self._allowed_plates and list_status != "allowed":
+        if list_status == "allowed":
+            return False                            # explicitly allowed — suppress alert
+        # If target list is active, only targeted plates notify
+        if self._target_plates and list_status != "target":
             return False
         return True
 
@@ -339,9 +375,12 @@ class PlateProcessor(BaseProcessor):
                     })
                 )
 
-            # Screenshot (saved regardless of list status — visual record)
+            # Screenshot — only for plates that are "of interest":
+            #   • always skip allowed plates (they are whitelisted)
+            #   • if a target list is set, only snapshot target plates
+            #   • otherwise (no lists, or only allowed list) snapshot everything else
             screenshot_path: str | None = None
-            if save_screenshot and self._recorder:
+            if save_screenshot and self._recorder and self._should_notify(r.list_status):
                 try:
                     screenshot_path = self._recorder.save_screenshot(
                         frame, suffix=f"_plate_{r.plate_text_norm}"
@@ -378,10 +417,10 @@ class PlateProcessor(BaseProcessor):
     def _draw(self, frame: np.ndarray, results: list[PlateResult]) -> None:
         for r in results:
             x1, y1, x2, y2 = r.bbox
-            if r.list_status == "blocked":
-                color = _COLOR_BLOCKED
-            elif r.list_status == "allowed":
+            if r.list_status == "allowed":
                 color = _COLOR_ALLOWED
+            elif r.list_status == "target":
+                color = _COLOR_TARGET
             else:
                 color = _COLOR_PLATE
 
@@ -390,10 +429,10 @@ class PlateProcessor(BaseProcessor):
 
             # Label: plate text + confidence
             label = f"{r.plate_text}  {r.ocr_confidence:.0%}"
-            if r.list_status == "blocked":
-                label = f"[BLOCKED] {label}"
-            elif r.list_status == "allowed":
+            if r.list_status == "allowed":
                 label = f"[OK] {label}"
+            elif r.list_status == "target":
+                label = f"[TARGET] {label}"
 
             (tw, th), baseline = cv2.getTextSize(
                 label, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 1

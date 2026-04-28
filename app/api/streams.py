@@ -53,16 +53,16 @@ def _get_active_stack(stream_id: int):
 
 
 async def _start_stack(stream: dict) -> None:
-    """Start a pipeline stack for stream if not already running."""
+    """Start a pipeline stack for stream if not already running.
+
+    Raises on failure so callers can surface the error to the client.
+    """
     if not _registry or not _loop:
         return
     if _registry.get(stream["id"]):
         return  # already running
-    try:
-        await _registry.start(stream, _loop, _notifier)
-        logger.info("Started pipeline for stream %d '%s'", stream["id"], stream.get("name"))
-    except Exception as exc:
-        logger.error("Failed to start stream %d: %s", stream["id"], exc)
+    await _registry.start(stream, _loop, _notifier)
+    logger.info("Started pipeline for stream %d '%s'", stream["id"], stream.get("name"))
 
 
 async def _stop_stack(stream_id: int) -> None:
@@ -114,7 +114,14 @@ async def create_stream(body: StreamCreate):
         )
     logger.info("Stream registered: ch%d '%s' → %s", body.channel_number, name, url)
     # Start the pipeline immediately — no restart needed
-    await _start_stack(stream)
+    try:
+        await _start_stack(stream)
+    except Exception as exc:
+        logger.error("Failed to start stream %d: %s", stream["id"], exc)
+        # Stream is persisted in DB but pipeline failed to start.
+        # Remove it so the client knows to retry rather than showing a broken channel.
+        await db.delete_stream(stream["id"])
+        raise HTTPException(status_code=500, detail=f"Stream saved but pipeline failed to start: {exc}")
     return stream
 
 
@@ -164,7 +171,10 @@ async def update_stream(stream_id: int, body: StreamUpdate):
         streams = await db.load_streams()
         stream = next((s for s in streams if s["id"] == stream_id), None)
         if stream:
-            await _start_stack(stream)
+            try:
+                await _start_stack(stream)
+            except Exception as exc:
+                logger.error("Failed to start stream %d on enable: %s", stream_id, exc)
     elif body.enabled is False:
         await _stop_stack(stream_id)
 

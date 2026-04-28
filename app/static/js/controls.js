@@ -1138,9 +1138,9 @@ function renderPlateList(entries) {
   entries.forEach(({ plate_text_norm, plate_text_raw, list_type, notes }) => {
     const row = document.createElement('div');
     row.className = 'plate-list-row';
-    const badge = list_type === 'allow'
-      ? '<span class="plate-badge plate-badge--allow">allow</span>'
-      : '<span class="plate-badge plate-badge--block">block</span>';
+    const badge = list_type === 'target'
+      ? '<span class="plate-badge plate-badge--target">target</span>'
+      : '<span class="plate-badge plate-badge--allowed">allowed</span>';
     row.innerHTML = `
       ${badge}
       <span class="plate-list-text">${plate_text_raw}</span>

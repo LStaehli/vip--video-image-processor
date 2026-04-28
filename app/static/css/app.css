@@ -871,8 +871,8 @@ textarea.text-input {
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.plate-badge--allow { background: rgba(80, 220, 80, 0.18); color: #50dc50; }
-.plate-badge--block { background: rgba(247,107,107, 0.18); color: var(--red); }
+.plate-badge--target  { background: rgba(0, 120, 255, 0.18); color: #4da6ff; }
+.plate-badge--allowed { background: rgba(80, 220, 80, 0.18); color: #50dc50; }
 
 /* ── Plate events list ───────────────────────────────────────────────────── */
 

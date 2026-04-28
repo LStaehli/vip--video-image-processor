@@ -31,7 +31,9 @@ def _first_stack():
 async def ws_video_stream(websocket: WebSocket, stream_id: int):
     stack = _registry.get(stream_id) if _registry else None
     if not stack:
-        await websocket.close(code=4004)
+        logger.warning("WS /ws/video/%d: stream not in registry — closing 4004", stream_id)
+        await websocket.accept()
+        await websocket.close(code=4004, reason="stream not active")
         return
     await stack.ws_manager.connect_video(websocket)
     try:
@@ -47,7 +49,8 @@ async def ws_video_stream(websocket: WebSocket, stream_id: int):
 async def ws_events_stream(websocket: WebSocket, stream_id: int):
     stack = _registry.get(stream_id) if _registry else None
     if not stack:
-        await websocket.close(code=4004)
+        await websocket.accept()
+        await websocket.close(code=4004, reason="stream not active")
         return
     await stack.ws_manager.connect_events(websocket)
     try:
@@ -65,7 +68,8 @@ async def ws_events_stream(websocket: WebSocket, stream_id: int):
 async def ws_video(websocket: WebSocket):
     stack = _first_stack()
     if not stack:
-        await websocket.close(code=4004)
+        await websocket.accept()
+        await websocket.close(code=4004, reason="no active stream")
         return
     await stack.ws_manager.connect_video(websocket)
     try:
@@ -81,7 +85,8 @@ async def ws_video(websocket: WebSocket):
 async def ws_events(websocket: WebSocket):
     stack = _first_stack()
     if not stack:
-        await websocket.close(code=4004)
+        await websocket.accept()
+        await websocket.close(code=4004, reason="no active stream")
         return
     await stack.ws_manager.connect_events(websocket)
     try:
